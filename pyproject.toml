@@ -15,4 +15,5 @@ dependencies = [
   "pendulum>=3.1.0",
   "python-dotenv>=1.2.1",
   "tqdm>=4.67.1",
+  "validators>=0.35.0",
 ]
