@@ -56,7 +56,7 @@ agents_df.loc[agents_df["name"] == "Jane Doe", "faction"] = (
     "Criminal Investigation Special Response Team"
 )
 
-data_path = "../data"
+data_path = "data"
 if not os.path.exists(data_path):
     os.mkdir(data_path)
-agents_df.to_csv(f"{data_path}/all_agents.csv", index=False)
+agents_df.to_csv(f"{data_path}/dim_agent.csv", index=False)
