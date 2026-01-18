@@ -67,3 +67,51 @@ resource "google_bigquery_table" "dim_agent" {
     },
   ])
 }
+
+resource "google_bigquery_table" "dim_video" {
+  dataset_id = google_bigquery_dataset.default.dataset_id
+  table_id   = "dim_video"
+
+  schema = jsonencode([
+    {
+      name = "video_id"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "title"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "description"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "channel_id"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "channel_title"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "publish_date"
+      type = "TIMESTAMP"
+      mode = "NULLABLE"
+    },
+    {
+      name = "search_query"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "discovered_at"
+      type = "TIMESTAMP"
+      mode = "NULLABLE"
+    },
+  ])
+}
