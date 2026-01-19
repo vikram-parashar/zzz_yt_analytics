@@ -103,7 +103,7 @@ def main():
 
     videos = []
     for query in topics:
-        videos.extend(get_videos(query, last_discovery, max_results=50, pages=2))
+        videos.extend(get_videos(query, last_discovery, max_results=50, pages=1))
     df = pd.DataFrame(videos)
     df.drop_duplicates(subset=["video_id"])
 
