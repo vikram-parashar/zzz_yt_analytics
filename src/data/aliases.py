@@ -1,0 +1,176 @@
+Aliases = {
+    "Alexandrina Sebastiane": ["Alexandrina Sebastiane", "Rina"],
+    "Alice Thymefield": [
+        "Alice Thymefield",
+        "Alice",
+    ],
+    "Anby Demara": ["Anby Demara", "Anby"],
+    "Anton Ivanov": [
+        "Anton Ivanov",
+        "Anton",
+    ],
+    "Asaba Harumasa": [
+        "Asaba Harumasa",
+        "Asaba",
+        "Harumasa",
+    ],
+    "Astra Yao": ["Astra Yao", "Astra"],
+    "Banyue": [
+        "Banyue",
+    ],
+    "Ben Bigger": [
+        "Ben Bigger",
+        "Ben",
+    ],
+    "Billy Kid": [
+        "Billy Kid",
+        "Billy",
+    ],
+    "Burnice White": [
+        "Burnice White",
+        "Burnice",
+    ],
+    "Caesar King": [
+        "Caesar King",
+        "Caesar",
+    ],
+    "Corin Wickes": [
+        "Corin Wickes",
+        "Corin",
+    ],
+    "Dialyn": [
+        "Dialyn",
+    ],
+    "Ellen Joe": [
+        "Ellen Joe",
+        "Ellen",
+    ],
+    "Evelyn Chevalier": [
+        "Evelyn Chevalier",
+        "Evelyn",
+    ],
+    "Grace Howard": [
+        "Grace",
+    ],
+    "Hoshimi Miyabi": [
+        "Miyabi",
+        "Hoshimi Miyabi",
+    ],
+    "Hugo Vlad": [
+        "Hugo Vlad",
+        "Hugo",
+    ],
+    "Jane Doe": [
+        "Jane Doe",
+        "Jane",
+    ],
+    "Ju Fufu": [
+        "Ju Fufu",
+        "Fufu",
+    ],
+    "Koleda Belobog": [
+        "Koleda Belobog",
+        "Koleda",
+    ],
+    "Komano Manato": [
+        "Komano Manato",
+        "Manato",
+    ],
+    "Lighter": [
+        "Lighter",
+    ],
+    "Lucia Elowen": [
+        "Lucia Elowen",
+        "Lucia",
+    ],
+    "Luciana de Montefio": [
+        "Luciana de Montefio",
+        "Lucy",
+    ],
+    "Nekomiya Mana": [
+        "Nekomiya Mana",
+        "Nekomiya",
+    ],
+    "Nicole Demara": [
+        "Nicole Demara",
+        "Nicole",
+    ],
+    "Orphie Magnusson & Magus": [
+        "Orphie Magnusson & Magus",
+        "Orphie",
+        "Magus",
+    ],
+    "Pan Yinhu": [
+        "Pan Yinhu",
+    ],
+    "Piper Wheel": [
+        "Piper Wheel",
+    ],
+    "Pulchra Fellini": [
+        "Pulchra Fellini",
+        "Pulchra",
+    ],
+    "Qingyi": [
+        "Qingyi",
+    ],
+    "Seed": [
+        "Seed",
+    ],
+    "Seth Lowell": [
+        "Seth Lowell",
+        "Seth",
+    ],
+    "Soldier 0 - Anby": [
+        "Soldier 0 - Anby",
+        "Sanby",
+        "Soldier 0",
+    ],
+    "Soldier 11": [
+        "Soldier 11",
+    ],
+    "Soukaku": [
+        "Soukaku",
+    ],
+    "Trigger": [
+        "Trigger",
+    ],
+    "Tsukishiro Yanagi": [
+        "Tsukishiro Yanagi",
+        "Yanagi",
+    ],
+    "Ukinami Yuzuha": [
+        "Ukinami Yuzuha",
+        "Yuzuha",
+    ],
+    "Vivian Banshee": [
+        "Vivian Banshee",
+        "Vivian",
+    ],
+    "Von Lycaon": [
+        "Von Lycaon",
+        "Lycaon",
+    ],
+    "Ye Shunguang": [
+        "Ye Shunguang",
+    ],
+    "Yidhari Murphy": [
+        "Yidhari Murphy",
+        "Yidhari",
+    ],
+    "Yixuan": [
+        "Yixuan",
+        "Yi xuan",
+    ],
+    "Zhao": [
+        "Zhao",
+    ],
+    "Zhu Yuan": [
+        "Zhu Yuan",
+    ],
+    "Aria": [
+        "Aria",
+    ],
+    "Sunna": [
+        "Sunna",
+    ],
+}

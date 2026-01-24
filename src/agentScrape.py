@@ -3,6 +3,7 @@ import os
 import pendulum
 import pandas as pd
 from bs4 import BeautifulSoup
+from data.aliases import Aliases
 
 url = "https://zenless-zone-zero.fandom.com/wiki/Agent/List"
 res = requests.get(url)
@@ -23,6 +24,7 @@ for agent_row in playable_agents:
             "faction": agent_tds[6].a["title"],
             "release_date": list(agent_tds[7].stripped_strings)[0],
             "release_version": list(agent_tds[7].stripped_strings)[3].split(" ")[1],
+            "aliases": Aliases[agent_tds[1].a.text],
         }
     )
 agents_df = pd.DataFrame(agents)
@@ -45,6 +47,7 @@ for agent_row in upcoming_agents:
             "faction": agent_tds[6].a["title"],
             "release_date": None,
             "release_version": None,
+            "aliases": Aliases[agent_tds[1].a.text],
         }
     )
 agents_df_new = pd.DataFrame(agents)

@@ -5,5 +5,14 @@ The Zenless Zone Zero (ZZZ) Character Popularity & Meta Shift Tracker is a data 
 
 The system ingests YouTube data on a scheduled basis, transforms it into an analytics-ready schema, and produces time-series insights that highlight emerging trends, declining characters, and the impact of banners or patches. The project demonstrates end-to-end data pipeline design, metric modeling, and analytical reasoning using real-world, high-volume API data.
 
+# agent aliases
+why mannual entries @src/data/aliases.py?
+first name is written after last name for some character
+if "word1 word2" broken and searched some char share common surname (demara), would give wrong results
+some known by nickname like rina and lucy
+some written differently like yi xuan and yixuan
+
 ### TODO
 1. manage api exhaustion logic
+2. error handing and checks at various places
+3. need better data modelling

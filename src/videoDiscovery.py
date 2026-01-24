@@ -105,8 +105,8 @@ def main():
     for query in topics:
         videos.extend(get_videos(query, last_discovery, max_results=50, pages=1))
     df = pd.DataFrame(videos)
-    df.drop_duplicates(subset=["video_id"])
+    df = df.drop_duplicates(subset=["video_id"])
 
     if not os.path.exists(data_path):
         os.mkdir(data_path)
-    df.to_csv(f"{data_path}/dim_videos.csv", index=False)
+    df.to_csv(f"{data_path}/videos.csv", index=False)
