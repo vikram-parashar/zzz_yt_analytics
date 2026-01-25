@@ -1,0 +1,72 @@
+import duckdb
+import pandas as pd
+from pandas.core.computation.pytables import ast
+from aliases import alias_dict
+
+"""
+Paths
+"""
+DB_PATH = "data/warehouse.db"
+agent_dir = "data/agents"
+cleaned_path = f"{agent_dir}/clean_agent.csv"
+
+"""
+DB logic
+"""
+con = duckdb.connect(DB_PATH)
+con.execute("""
+CREATE TABLE IF NOT EXISTS dim_agent (
+    name VARCHAR UNIQUE PRIMARY KEY,
+    rank VARCHAR,
+    attribute VARCHAR,
+    speciality VARCHAR,
+    faction VARCHAR,
+    release_date DATE,
+    release_version VARCHAR
+)
+""")
+# always latest
+con.execute("DELETE FROM dim_agent")
+
+con.execute("""
+CREATE TABLE IF NOT EXISTS bridge_agent_alias (
+    name VARCHAR,
+    alias VARCHAR,
+    PRIMARY KEY (name,alias)
+)
+""")
+# always latest
+con.execute("DELETE FROM bridge_agent_alias")
+
+
+# Insert agents
+agents_df = duckdb.read_csv(cleaned_path).to_df()
+con.register("agents_temp", agents_df)
+con.execute("""
+INSERT INTO dim_agent (name, rank, attribute, speciality, faction, release_date, release_version)
+SELECT name, rank, attribute, speciality, faction, release_date, release_version
+FROM agents_temp
+""")
+
+# Get keys
+agent_names = con.execute("SELECT name FROM dim_agent").df()["name"]
+
+# Build alias bridge
+alias_rows = []
+for agent_name in agent_names:
+    if agent_name in alias_dict:
+        for alias in alias_dict[agent_name]:
+            alias_rows.append({"name": agent_name, "alias": alias})
+    else:
+        # log missing aliases please update pipeline/agent/aliases.py for agent
+        print("missing")
+
+alias_df = pd.DataFrame(alias_rows)
+con.register("alias_temp", alias_df)
+
+con.execute("""
+INSERT INTO bridge_agent_alias
+SELECT * FROM alias_temp
+""")
+
+con.close()
