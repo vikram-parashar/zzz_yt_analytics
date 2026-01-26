@@ -100,6 +100,9 @@ def init_tables(con: DuckDBPyConnection):
            description VARCHAR,
            channel_id VARCHAR,
            published_at TIMESTAMP,
+           thumbnail VARCHAR,
+           tags VARCHAR[],
+           duration_seconds int,
            ingested_date DATE
         )
     """)
@@ -108,6 +111,9 @@ def init_tables(con: DuckDBPyConnection):
         CREATE TABLE IF NOT EXISTS dim_channel(
            channel_id VARCHAR PRIMARY KEY,
            channel_name VARCHAR,
+           thumbnail VARCHAR,
+           language VARCHAR,
+           country VARCHAR,
            ingested_date DATE
         )
     """)
