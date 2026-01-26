@@ -12,6 +12,11 @@ if "word1 word2" broken and searched some char share common surname (demara), wo
 some known by nickname like rina and lucy
 some written differently like yi xuan and yixuan
 
+# quota refernce
+https://developers.google.com/youtube/v3/determine_quota_cost
+search cost 100, 10k/100 can only search 100 times a day, so discovery would run once manually
+video list is cheap cost 1 credit only, will run daily for each video
+
 ### TODO
 1. manage api exhaustion logic
 2. error handing and checks at various places
