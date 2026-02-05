@@ -1955,7 +1955,7 @@ wheels = [
 ]
 
 [[package]]
-name = "yt-analytics"
+name = "zzz_analytics"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
