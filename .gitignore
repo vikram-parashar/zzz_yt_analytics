@@ -11,12 +11,8 @@ wheels/
 
 .env
 data
-.ipynb_checkpoints/
 
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 terraform/.terraform
 terraform/.terraform.lock.hcl
-
-notebooks/.ipynb_checkpoints/
-

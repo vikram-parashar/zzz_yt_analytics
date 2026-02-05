@@ -1,5 +1,5 @@
 [project]
-name = "yt-analytics"
+name = "zzz_analytics"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -15,3 +15,6 @@ dependencies = [
   "pendulum>=3.1.0",
   "python-dotenv>=1.2.1",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]

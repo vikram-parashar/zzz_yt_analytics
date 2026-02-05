@@ -21,3 +21,34 @@ video list is cheap cost 1 credit only, will run daily for each video
 1. manage api exhaustion logic
 2. error handing and checks at various places
 3. need better data modelling
+
+# setup
+* install packages (including local src)
+uv sync
+uv pip install -e .
+* install airflow
+bash```
+uv pip install "apache-airflow==3.1.3" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.1.3/constraints-3.13.txt"
+```
+* run airflow
+bash```
+airflow standalone
+```
+* go to $AIRFLOW_HOME/airflow.cfg , change load_examples to False and then
+bash```
+airflow db reset
+```
+* stop airflow standalone and then run 
+bash ```
+export AIRFLOW__CORE__DAGS_FOLDER=$(pwd)/dags
+airflow standalone
+```
+
+
+# why 'm using duckdb
+duckdb is simplest db choice as an analytics db, unless it struggles no reason to upgrade
+simple? yes, just one line
+```
+con = duckdb.connect("warehouse.duckdb")
+```
+
