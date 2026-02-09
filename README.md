@@ -40,8 +40,7 @@ airflow db reset
 ```
 * stop airflow standalone and then run 
 bash ```
-export AIRFLOW__CORE__DAGS_FOLDER=$(pwd)/dags
-airflow standalone
+export AIRFLOW__CORE__DAGS_FOLDER=$(pwd)/airflow/dags && airflow standalone
 ```
 
 
@@ -51,4 +50,3 @@ simple? yes, just one line
 ```
 con = duckdb.connect("warehouse.duckdb")
 ```
-

@@ -8,11 +8,5 @@ wheels/
 
 # Virtual environments
 .venv
-
 .env
 data
-
-terraform/terraform.tfstate
-terraform/terraform.tfstate.backup
-terraform/.terraform
-terraform/.terraform.lock.hcl
