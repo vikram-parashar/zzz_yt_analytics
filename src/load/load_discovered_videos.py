@@ -7,10 +7,6 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def connect_db(path: str) -> DuckDBPyConnection:
-    return duckdb.connect(path)
-
-
 def load_discovered_videos(con: DuckDBPyConnection, df: pd.DataFrame):
     if df.empty:
         return
@@ -49,3 +45,21 @@ def load_discovered_videos(con: DuckDBPyConnection, df: pd.DataFrame):
         """,
         [pendulum.now().to_date_string()],
     )
+
+
+def update_video_metadata(con: DuckDBPyConnection, df: pd.DataFrame):
+    if df.empty:
+        return
+
+    con.register("video_tmp", df)
+
+    logger.info("Updating dim_video table")
+    con.execute("""
+        UPDATE dim_video AS v
+        SET 
+            duration_seconds = t.duration_seconds,
+            tags = t.tags,
+            thumbnail = t.thumbnail
+        FROM video_tmp AS t
+        WHERE v.video_id = t.video_id
+    """)

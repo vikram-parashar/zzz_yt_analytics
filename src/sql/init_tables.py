@@ -1,10 +1,11 @@
 import duckdb
+from load_config import load_config
 
-DB_PATH = "data/warehouse.db"
+config=load_config()
 
 
 def init_tables_func():
-    con = duckdb.connect(DB_PATH)
+    con = duckdb.connect(config['db']['path'])
 
     con.execute("""
     CREATE TABLE IF NOT EXISTS dim_agent (

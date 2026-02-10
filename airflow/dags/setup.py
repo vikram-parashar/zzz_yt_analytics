@@ -1,5 +1,6 @@
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
+from pipelines.enrich_video import enrich_videos_func
 from pipelines.initial_video_discovery import initial_video_discovery_func
 from pipelines.scrape_agents_from_wiki import scrape_agent_func
 from sql.init_tables import init_tables_func
@@ -24,4 +25,9 @@ with DAG(
         python_callable=initial_video_discovery_func,
     )
 
-    init_tables >> scrape_agents >> initial_video_discovery
+    enrich_videos = PythonOperator(
+        task_id="enrich_videos",
+        python_callable=enrich_videos_func,
+    )
+
+    init_tables >> scrape_agents >> initial_video_discovery >> enrich_videos

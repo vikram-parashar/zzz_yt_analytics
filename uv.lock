@@ -1955,7 +1955,7 @@ wheels = [
 ]
 
 [[package]]
-name = "zzz_analytics"
+name = "zzz-analytics"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
@@ -1968,6 +1968,7 @@ dependencies = [
     { name = "pandas-gbq" },
     { name = "pendulum" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -1981,4 +1982,5 @@ requires-dist = [
     { name = "pandas-gbq", specifier = ">=0.33.0" },
     { name = "pendulum", specifier = ">=3.1.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
