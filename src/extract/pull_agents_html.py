@@ -59,7 +59,7 @@ def save_raw(html: str, run_date: str):
     logger.info("Saved new snapshot | hash=%s", new_hash)
 
 
-def scrape_agnents_func(**context):
+def pull_agents_html(**context):
     run_date = pendulum.now("UTC").to_datetime_string()
     logger.info("Agents extraction started | run_date=%s", run_date)
 
@@ -70,4 +70,4 @@ def scrape_agnents_func(**context):
 
 
 if __name__ == "__main__":
-    scrape_agnents_func()
+    pull_agents_html()

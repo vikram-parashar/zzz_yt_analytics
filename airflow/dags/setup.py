@@ -1,9 +1,8 @@
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
-from extract.scrape_agents import scrape_agnents_func
-from load.load_agents import load_agents_func
+from pipelines.initial_video_discovery import initial_video_discovery_func
+from pipelines.scrape_agents_from_wiki import scrape_agent_func
 from sql.init_tables import init_tables_func
-from transform.parse_agents import parse_agents_func
 
 
 with DAG(
@@ -17,14 +16,12 @@ with DAG(
 
     scrape_agents = PythonOperator(
         task_id="scrape_agents_wiki",
-        python_callable=scrape_agnents_func,
+        python_callable=scrape_agent_func,
     )
-    parse_agents = PythonOperator(
-        task_id="transform_to_csv",
-        python_callable=parse_agents_func,
+
+    initial_video_discovery = PythonOperator(
+        task_id="initial_video_discovery",
+        python_callable=initial_video_discovery_func,
     )
-    load_agents = PythonOperator(
-        task_id="load_agents_to_duckdb",
-        python_callable=load_agents_func,
-    )
-    init_tables >> scrape_agents >> parse_agents >> load_agents
+
+    init_tables >> scrape_agents >> initial_video_discovery
