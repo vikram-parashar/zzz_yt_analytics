@@ -61,7 +61,7 @@ def save_raw(html: str, run_date: str):
 
 
 # main
-def scrape_agnents_func(**context):  # Airflow can pass context
+def pull_agents_html(**context):  # Airflow can pass context
     run_date = pendulum.now("UTC").to_datetime_string()
     logger.info("Agents extraction started | run_date=%s", run_date)
 
@@ -72,4 +72,4 @@ def scrape_agnents_func(**context):  # Airflow can pass context
 
 
 if __name__ == "__main__":
-    scrape_agnents_func()
+    pull_agents_html()
