@@ -57,3 +57,26 @@ def discover_videos(query: str, max_results: int):
         logger.error(f"YouTube API error: {e}")
 
     return items
+
+
+def fetch_video_metadata(video_ids: list[str]) -> list[dict]:
+    results = []
+
+    try:
+        res = (
+            youtube_client.videos()
+            .list(part="snippet,contentDetails", id=",".join(video_ids))
+            .execute()
+        )
+        # https://developers.google.com/youtube/v3/docs/videos#resource
+
+    except HttpError as e:
+        logger.error(f"YouTube API HTTP error: {e}")
+    except Exception as e:
+        logger.exception(f"Unexpected API error: {e}")
+
+    items = res.get("items", [])
+    logger.info(f"Received {len(items)} video records")
+    results.extend(items)
+
+    return results
