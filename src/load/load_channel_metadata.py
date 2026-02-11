@@ -16,7 +16,6 @@ def update_channel_metadata(con: DuckDBPyConnection, df: pd.DataFrame):
     con.execute("""
         UPDATE dim_channel AS v
         SET 
-            language = t.language,
             country = t.country,
             thumbnail = t.thumbnail
         FROM channel_tmp AS t
