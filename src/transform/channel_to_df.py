@@ -11,7 +11,6 @@ def channel_metadata_df(items) -> pd.DataFrame:
                     "thumbnail": item["snippet"]["thumbnails"]
                     .get("default", {})
                     .get("url", ""),
-                    "language": item["snippet"].get("defaultLanguage", None),
                     "country": item["snippet"].get("country", None),
                 }
             )

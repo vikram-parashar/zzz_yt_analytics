@@ -1,11 +1,11 @@
 import duckdb
 from load_config import load_config
 
-config=load_config()
+config = load_config()
 
 
 def init_tables_func():
-    con = duckdb.connect(config['db']['path'])
+    con = duckdb.connect(config["db"]["path"])
 
     con.execute("""
     CREATE TABLE IF NOT EXISTS dim_agent (
@@ -46,7 +46,6 @@ def init_tables_func():
            channel_id VARCHAR PRIMARY KEY,
            channel_name VARCHAR,
            thumbnail VARCHAR,
-           language VARCHAR,
            country VARCHAR,
            ingested_date DATE
         )
