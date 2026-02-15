@@ -7,5 +7,5 @@ con = duckdb.connect(DB_PATH)
 #         drop table dim_channel;
 # """)
 con.sql("""
-        select * from dim_video
+        select * from fact_video_daily
 """).show()

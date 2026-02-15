@@ -6,8 +6,6 @@ import utils
 logger = utils.get_logger(__name__)
 
 
-
-
 def update_channel_metadata(con: DuckDBPyConnection, df: pd.DataFrame):
     if df.empty:
         return
@@ -27,7 +25,7 @@ def update_channel_metadata(con: DuckDBPyConnection, df: pd.DataFrame):
     con.execute(
         """
         INSERT OR REPLACE INTO fact_channel_daily (
-            channel_id, snapshot_date, subscriber_count, view_count, video_count, ingested_at,
+            channel_id, snapshot_date, subscriber_count, view_count, video_count, ingested_at
         )
         SELECT 
             channel_id,
