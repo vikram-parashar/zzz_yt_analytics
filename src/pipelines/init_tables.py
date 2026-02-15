@@ -1,7 +1,7 @@
 import duckdb
-from load_config import load_config
+import utils
 
-config = load_config()
+config = utils.load_config()
 
 
 def init_tables_func():
@@ -48,6 +48,34 @@ def init_tables_func():
            thumbnail VARCHAR,
            country VARCHAR,
            ingested_date DATE
+        )
+    """)
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS fact_video_daily (
+            video_id VARCHAR,
+            snapshot_date DATE,
+            view_count BIGINT,
+            like_count BIGINT,
+            comment_count BIGINT,
+            dislike_count BIGINT,
+            favorite_count BIGINT,
+            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (video_id, snapshot_date),
+            FOREIGN KEY (video_id) REFERENCES dim_video(video_id)
+        )
+    """)
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS fact_channel_daily (
+            channel_id VARCHAR,
+            snapshot_date DATE,
+            subscriber_count BIGINT,
+            view_count BIGINT,
+            video_count INTEGER,
+            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (channel_id, snapshot_date),
+            FOREIGN KEY (channel_id) REFERENCES dim_channel(channel_id)
         )
     """)
 

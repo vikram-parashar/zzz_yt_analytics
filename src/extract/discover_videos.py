@@ -1,15 +1,13 @@
 import os
-import logging
-import pandas as pd
 import pendulum
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
 from duckdb import DuckDBPyConnection
+import utils
 
+logger = utils.get_logger(__name__)
 load_dotenv()
-logger = logging.getLogger(__name__)
-
 API_KEY = os.getenv("YT_DATA_API")
 
 if not API_KEY:
@@ -37,7 +35,7 @@ def get_topic_list(con: DuckDBPyConnection) -> list[str]:
     return topics
 
 
-def discover_videos(query: str, max_results: int):
+def discover_videos(query: str, max_results: int, publishedAfter: pendulum.DateTime):
     logger.info(f"Extracting videos | query='{query}'")
 
     try:
@@ -47,7 +45,7 @@ def discover_videos(query: str, max_results: int):
             type="video",
             maxResults=max_results,
             order="relevance",
-            publishedAfter=pendulum.datetime(2024, 1, 1).to_rfc3339_string(),
+            publishedAfter=publishedAfter.to_rfc3339_string(),
         )
         # https://developers.google.com/youtube/v3/docs/videos#resource
         res = req.execute()
@@ -65,7 +63,7 @@ def fetch_video_metadata(video_ids: list[str]) -> list[dict]:
     try:
         res = (
             youtube_client.videos()
-            .list(part="snippet,contentDetails", id=",".join(video_ids))
+            .list(part="snippet,contentDetails,statistics", id=",".join(video_ids))
             .execute()
         )
         # https://developers.google.com/youtube/v3/docs/videos#resource

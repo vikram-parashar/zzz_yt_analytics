@@ -1,12 +1,11 @@
-import json
 import os
-import logging
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
+import utils
 
+logger = utils.get_logger(__name__)
 load_dotenv()
-logger = logging.getLogger(__name__)
 
 API_KEY = os.getenv("YT_DATA_API")
 
@@ -22,7 +21,7 @@ def fetch_channel_metadata(channel_ids: list[str]) -> list[dict]:
     try:
         res = (
             youtube_client.channels()
-            .list(part="snippet,contentDetails", id=",".join(channel_ids))
+            .list(part="snippet,contentDetails,statistics", id=",".join(channel_ids))
             .execute()
         )
         # https://developers.google.com/youtube/v3/docs/channels#resource

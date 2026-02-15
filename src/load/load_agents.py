@@ -1,13 +1,12 @@
 import json
-import logging
 from pathlib import Path
 import duckdb
-from load_config import load_config
 import pandas as pd
+import utils
 
-logger = logging.getLogger(__name__)
 
-config = load_config()
+logger = utils.get_logger(__name__)
+config = utils.load_config()
 DB_PATH = config["db"]["path"]
 STAGE_DIR = Path("data/stage")
 JSON_PATH = Path("src/data/aliases.json")

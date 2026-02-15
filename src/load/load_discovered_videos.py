@@ -1,10 +1,9 @@
-import logging
 import pendulum
-import duckdb
 from duckdb import DuckDBPyConnection
 import pandas as pd
+import utils
 
-logger = logging.getLogger(__name__)
+logger = utils.get_logger(__name__)
 
 
 def load_discovered_videos(con: DuckDBPyConnection, df: pd.DataFrame):
@@ -63,3 +62,22 @@ def update_video_metadata(con: DuckDBPyConnection, df: pd.DataFrame):
         FROM video_tmp AS t
         WHERE v.video_id = t.video_id
     """)
+
+    con.execute(
+        """
+        INSERT OR REPLACE INTO fact_video_daily (
+            video_id, snapshot_date, view_count, like_count, comment_count, dislike_count, favorite_count, ingested_at
+        )
+        SELECT
+            video_id,
+            ?,
+            view_count,
+            like_count,
+            comment_count,
+            dislike_count,
+            favorite_count,
+            ?
+        FROM video_tmp
+    """,
+        [pendulum.now().to_date_string(), pendulum.now().to_datetime_string()],
+    )

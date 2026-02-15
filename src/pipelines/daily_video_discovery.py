@@ -1,5 +1,5 @@
 import duckdb
-from extract.discover_videos import discover_videos, get_topic_list
+from extract.discover_videos import discover_videos
 from load.load_discovered_videos import load_discovered_videos
 import utils
 import pendulum
@@ -8,13 +8,15 @@ from transform.videos_to_df import prepare_video_df
 config = utils.load_config()
 
 
-def initial_video_discovery_func():
+def daily_video_discovery_func():
     con = duckdb.connect(config["db"]["path"])
 
-    topics = get_topic_list(con)
+    topics = ["Zenless Zone Zero"]
 
     for t in topics:
-        items = discover_videos(t, 50, pendulum.datetime(2024, 1, 1))
+        items = discover_videos(
+            t, config["app"]["daily_video_ingestion"], pendulum.now().subtract(days=1)
+        )
         df = prepare_video_df(items)
         load_discovered_videos(con, df)
 
@@ -22,4 +24,4 @@ def initial_video_discovery_func():
 
 
 if __name__ == "__main__":
-    initial_video_discovery_func()
+    daily_video_discovery_func()

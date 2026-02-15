@@ -1,9 +1,9 @@
-import logging
 import pandas as pd
 import pendulum
 import re
+import utils
 
-logger=logging.getLogger(__name__)
+logger = utils.get_logger(__name__)
 ISO_8601_DURATION_REGEX = re.compile(
     r"P"  # starts with 'P'
     r"(?:(\d+)D)?"  # days
@@ -39,6 +39,7 @@ def prepare_video_df(items) -> pd.DataFrame:
 
     return df
 
+
 def parse_iso8601_duration(duration: str) -> int | None:
     try:
         match = ISO_8601_DURATION_REGEX.fullmatch(duration)
@@ -66,6 +67,11 @@ def video_metadata_df(items) -> pd.DataFrame:
                     "thumbnail": item["snippet"]["thumbnails"]
                     .get("default", {})
                     .get("url", ""),
+                    "view_count": item["statistics"]["viewCount"],
+                    "like_count": item["statistics"]["likeCount"],
+                    "dislike_count": item["statistics"]["dislikeCount"],
+                    "favorite_count": item["statistics"]["favoriteCount"],
+                    "comment_count": item["statistics"]["commentCount"],
                 }
             )
         except KeyError:

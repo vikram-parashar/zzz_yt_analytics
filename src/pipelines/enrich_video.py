@@ -1,13 +1,11 @@
-import logging
-
 import duckdb
 from extract.discover_videos import fetch_video_metadata
 from load.load_discovered_videos import update_video_metadata
-from load_config import load_config
 from transform.videos_to_df import video_metadata_df
+import utils
 
-logger = logging.getLogger(__name__)
-config = load_config()
+logger = utils.get_logger(__name__)
+config = utils.load_config()
 
 
 def get_video_ids(con) -> list[str]:

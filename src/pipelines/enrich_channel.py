@@ -1,13 +1,11 @@
-import logging
-
 import duckdb
 from extract.discover_channels import fetch_channel_metadata
 from load.load_channel_metadata import update_channel_metadata
-from load_config import load_config
 from transform.channel_to_df import channel_metadata_df
+import utils
 
-logger = logging.getLogger(__name__)
-config = load_config()
+logger = utils.get_logger(__name__)
+config = utils.load_config()
 
 
 def get_channel_ids(con) -> list[str]:

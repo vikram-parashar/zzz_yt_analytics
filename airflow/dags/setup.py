@@ -26,16 +26,4 @@ with DAG(
         python_callable=initial_video_discovery_func,
     )
 
-    enrich_videos = PythonOperator(
-        task_id="enrich_videos",
-        python_callable=enrich_videos_func,
-    )
-
-    enrich_channels = PythonOperator(
-        task_id="enrich_channels",
-        python_callable=enrich_channels_func,
-    )
-
     init_tables >> scrape_agents >> initial_video_discovery
-    initial_video_discovery >> enrich_videos
-    initial_video_discovery >> enrich_channels

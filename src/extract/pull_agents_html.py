@@ -1,11 +1,10 @@
-import logging
 import hashlib
 from pathlib import Path
 import requests
 import pendulum
+import utils
 
-logger = logging.getLogger(__name__)
-
+logger = utils.get_logger(__name__)
 RAW_DIR = Path("data/raw")
 URL = "https://zenless-zone-zero.fandom.com/wiki/Agent"
 
