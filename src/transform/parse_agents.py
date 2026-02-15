@@ -1,12 +1,10 @@
-import os
-import logging
 from bs4 import BeautifulSoup
 import pendulum
 import pandas as pd
 from pathlib import Path
+import utils
 
-logger = logging.getLogger(__name__)
-
+logger = utils.get_logger(__name__)
 RAW_DIR = Path("data/raw")
 STAGE_DIR = Path("data/stage")
 

@@ -1,2 +1,6 @@
 db:
   path: "data/warehouse.db"
+
+app:
+  # max at 50
+  daily_video_ingestion: 30
