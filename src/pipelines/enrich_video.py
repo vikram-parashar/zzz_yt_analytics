@@ -11,9 +11,7 @@ config = utils.load_config()
 def get_video_ids(con) -> list[str]:
     logger.info("Fetching video IDs from warehouse")
     try:
-        df = con.sql(
-            "SELECT video_id FROM dim_video WHERE duration_seconds IS NULL"
-        ).to_df()
+        df = con.sql("SELECT video_id FROM dim_video").to_df()
         logger.info(f"{len(df)} videos to enrich")
         return list(df["video_id"])
     except Exception as e:
@@ -39,6 +37,7 @@ def enrich_videos_func():
 
     for video_id_chunk in video_id_chunks:
         items = fetch_video_metadata(video_id_chunk)
+        logger.info(f"Total item = {len(items)}")
         df = video_metadata_df(items)
         update_video_metadata(con, df)
 

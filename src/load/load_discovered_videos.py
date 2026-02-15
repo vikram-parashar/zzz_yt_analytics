@@ -48,6 +48,7 @@ def load_discovered_videos(con: DuckDBPyConnection, df: pd.DataFrame):
 
 def update_video_metadata(con: DuckDBPyConnection, df: pd.DataFrame):
     if df.empty:
+        logger.info("Recived empty df")
         return
 
     con.register("video_tmp", df)
