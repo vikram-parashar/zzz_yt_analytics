@@ -23,11 +23,11 @@ def prepare_video_df(items) -> pd.DataFrame:
             records.append(
                 {
                     "video_id": item["id"]["videoId"],
-                    "title": item["snippet"]["title"],
-                    "description": item["snippet"]["description"],
-                    "channel_id": item["snippet"]["channelId"],
-                    "channel_title": item["snippet"]["channelTitle"],
-                    "published_at": item["snippet"]["publishedAt"],
+                    "title": item.get("snippet", {})["title"],
+                    "description": item.get("snippet", {})["description"],
+                    "channel_id": item.get("snippet", {})["channelId"],
+                    "channel_title": item.get("snippet", {})["channelTitle"],
+                    "published_at": item.get("snippet", {})["publishedAt"],
                     "discovered_at": pendulum.now(),
                 }
             )
@@ -59,21 +59,23 @@ def video_metadata_df(items) -> pd.DataFrame:
         try:
             res.append(
                 {
-                    "video_id": item["id"],
-                    "tags": item["snippet"].get("tags", []),
+                    "video_id": item.get("id"),
+                    "tags": item.get("snippet", {}).get("tags", []),
                     "duration_seconds": parse_iso8601_duration(
-                        item["contentDetails"]["duration"]
+                        item.get("contentDetails", {}).get("duration")
                     ),
-                    "thumbnail": item["snippet"]["thumbnails"]
+                    "thumbnail": item.get("snippet", {})
+                    .get("thumbnails", {})
                     .get("default", {})
                     .get("url", ""),
-                    "view_count": item["statistics"]["viewCount"],
-                    "like_count": item["statistics"]["likeCount"],
-                    "dislike_count": item["statistics"]["dislikeCount"],
-                    "favorite_count": item["statistics"]["favoriteCount"],
-                    "comment_count": item["statistics"]["commentCount"],
+                    "view_count": item.get("statistics", {}).get("viewCount"),
+                    "like_count": item.get("statistics", {}).get("likeCount"),
+                    "dislike_count": item.get("statistics", {}).get("dislikeCount"),
+                    "favorite_count": item.get("statistics", {}).get("favoriteCount"),
+                    "comment_count": item.get("statistics", {}).get("commentCount"),
                 }
             )
         except KeyError:
+            logger.error("Got a key error")
             continue
     return pd.DataFrame(res)
