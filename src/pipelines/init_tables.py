@@ -58,8 +58,6 @@ def init_tables_func():
             view_count BIGINT,
             like_count BIGINT,
             comment_count BIGINT,
-            dislike_count BIGINT,
-            favorite_count BIGINT,
             ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (video_id, snapshot_date),
             FOREIGN KEY (video_id) REFERENCES dim_video(video_id)
