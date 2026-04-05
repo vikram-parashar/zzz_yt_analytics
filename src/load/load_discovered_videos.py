@@ -55,14 +55,13 @@ def update_video_metadata(con: DuckDBPyConnection, df: pd.DataFrame):
 
     logger.info("Updating dim_video table")
     con.execute("""
-        UPDATE dim_video AS v
-        SET 
-            duration_seconds = t.duration_seconds,
-            tags = t.tags,
-            thumbnail = t.thumbnail
-        FROM video_tmp AS t
-        WHERE v.video_id = t.video_id
-        ON CONFLICT DO NOTHING
+    UPDATE dim_video AS v
+    SET 
+        duration_seconds = t.duration_seconds,
+        tags = t.tags,
+        thumbnail = t.thumbnail
+    FROM video_tmp AS t
+    WHERE v.video_id = t.video_id
     """)
 
     con.execute(
