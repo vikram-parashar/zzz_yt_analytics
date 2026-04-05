@@ -44,9 +44,22 @@ export AIRFLOW__CORE__DAGS_FOLDER=$(pwd)/airflow/dags && airflow standalone
 ```
 
 
-# why 'm using duckdb
+# why i am using duckdb
 duckdb is simplest db choice as an analytics db, unless it struggles no reason to upgrade
 simple? yes, just one line
 ```
 con = duckdb.connect("warehouse.duckdb")
+```
+
+# Architecture diagram
+```
+YouTube API
+  ↓
+Python pipeline
+  ↓
+DuckDB warehouse
+  ↓
+Analytics
+  ↓
+Dashboard
 ```

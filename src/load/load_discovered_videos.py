@@ -62,6 +62,7 @@ def update_video_metadata(con: DuckDBPyConnection, df: pd.DataFrame):
             thumbnail = t.thumbnail
         FROM video_tmp AS t
         WHERE v.video_id = t.video_id
+        ON CONFLICT DO NOTHING
     """)
 
     con.execute(
