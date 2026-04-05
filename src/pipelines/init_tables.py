@@ -77,6 +77,16 @@ def init_tables_func():
         )
     """)
 
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS bridge_video_agent (
+            video_id VARCHAR,
+            agent_name VARCHAR,
+            confidence REAL,
+            PRIMARY KEY (video_id, agent_name),
+            FOREIGN KEY (video_id) REFERENCES dim_video(video_id)
+        )
+    """)
+
 
 if __name__ == "__main__":
     init_tables_func()
