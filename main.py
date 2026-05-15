@@ -1,11 +1,178 @@
-import duckdb
+"""
+Usage:
+    uv run main.py setup              First-time warehouse setup
+    uv run main.py daily              Daily incremental pipeline
+    uv run main.py init-tables        Create DuckDB tables only
+    uv run main.py scrape-agents      Scrape agent data from wiki
+    uv run main.py discover           Daily video discovery
+    uv run main.py initial-discover   Full initial video discovery
+    uv run main.py enrich-videos      Enrich video metadata
+    uv run main.py enrich-channels    Enrich channel metadata
+    uv run main.py match              Build video-agent associations
+    uv run main.py query <sql>        Run SQL queries in the warehouse
+"""
 
-DB_PATH = "data/warehouse.db"
-con = duckdb.connect(DB_PATH)
-# con.sql("""
-#         drop table dim_video;
-#         drop table dim_channel;
-# """)
-con.sql("""
-        select * from fact_video_daily
-""").show()
+import sys
+import pendulum
+from src.utils import get_logger, load_config, get_db, chunk_list
+from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
+from src.warehouse import (
+    init_tables,
+    insert_discovered_videos,
+    upsert_video_details,
+    upsert_channel_details,
+    _video_search_to_df,
+    _video_stats_to_df,
+    _channel_stats_to_df,
+    get_video_ids,
+    get_channel_ids_needing_enrichment,
+    get_agent_names,
+)
+from src.agents import scrape_and_load
+from src.matching import match_videos_to_agents
+
+logger = get_logger("main")
+config = load_config()
+
+
+# ── Pipelines ─────────────────────────────────────────────────────
+
+
+def setup():
+    """One-time setup: init tables → scrape agents → discover → enrich."""
+    logger.info("=" * 50)
+    logger.info("SETUP PIPELINE")
+    logger.info("=" * 50)
+
+    init_tables()
+    scrape_and_load()
+    initial_discover()
+    enrich_videos()
+    enrich_channels()
+
+    logger.info("Setup complete — warehouse is ready")
+
+
+def daily():
+    """Daily pipeline: discover new videos → enrich stats."""
+    logger.info("=" * 50)
+    logger.info("DAILY PIPELINE")
+    logger.info("=" * 50)
+
+    discover()
+    enrich_videos()
+    enrich_channels()
+
+    logger.info("Daily pipeline complete")
+
+
+def initial_discover():
+    """Discover videos for all agent-related topics. Uses 100 quota units per topic."""
+    with get_db(config) as con:
+        topics = [
+            "Zenless Zone Zero guide",
+            "Zenless Zone Zero character showcase",
+            "Zenless Zone Zero tier list",
+            "Zenless Zone Zero gameplay",
+            "Zenless Zone Zero news",
+        ]
+        for name in get_agent_names(con):
+            topics.append(f"Zenless Zone Zero {name}")
+
+        logger.info(f"Running initial discovery for {len(topics)} topics")
+
+        for topic in topics:
+            items = search_videos(
+                topic, 50, pendulum.datetime(2024, 1, 1).to_rfc3339_string()
+            )
+            df = _video_search_to_df(items)
+            insert_discovered_videos(con, df)
+
+
+def discover():
+    """Discover recently published videos. Uses ~100 quota units."""
+    with get_db(config) as con:
+        topic = "Zenless Zone Zero"
+        max_results = config["app"]["daily_video_ingestion"]
+        published_after = pendulum.now().subtract(days=1).to_rfc3339_string()
+
+        items = search_videos(topic, max_results, published_after)
+        df = _video_search_to_df(items)
+        insert_discovered_videos(con, df)
+
+
+def enrich_videos():
+    """Fetch up-to-date stats for all known videos."""
+    with get_db(config) as con:
+        ids = get_video_ids(con)
+        if not ids:
+            logger.info("No videos to enrich")
+            return
+
+        for chunk in chunk_list(ids, 50):
+            items = fetch_video_stats(chunk)
+            df = _video_stats_to_df(items)
+            upsert_video_details(con, df)
+
+    logger.info("Video enrichment complete")
+
+
+def enrich_channels():
+    """Fetch channel details for channels missing thumbnail/country."""
+    with get_db(config) as con:
+        ids = get_channel_ids_needing_enrichment(con)
+        if not ids:
+            logger.info("No channels to enrich")
+            return
+
+        for chunk in chunk_list(ids, 50):
+            items = fetch_channel_stats(chunk)
+            df = _channel_stats_to_df(items)
+            upsert_channel_details(con, df)
+
+    logger.info("Channel enrichment complete")
+
+
+def query(sql: str):
+    """Run an ad-hoc SQL query and display results."""
+    with get_db(config) as con:
+        con.sql(sql).show()
+
+
+COMMANDS = {
+    "setup": setup,
+    "daily": daily,
+    "init-tables": init_tables,
+    "scrape-agents": scrape_and_load,
+    "discover": discover,
+    "initial-discover": initial_discover,
+    "enrich-videos": enrich_videos,
+    "enrich-channels": enrich_channels,
+    "match": match_videos_to_agents,
+}
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print("\nCommands:")
+        for cmd in COMMANDS:
+            print(f"  {cmd}")
+        print("  query <sql>")
+        sys.exit(0)
+
+    cmd = sys.argv[1]
+
+    if cmd == "query":
+        if len(sys.argv) < 3:
+            print("Usage: uv run main.py query <sql>")
+            sys.exit(1)
+        query(sys.argv[2])
+    elif cmd in COMMANDS:
+        COMMANDS[cmd]()
+    else:
+        print(f"Unknown command: {cmd}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

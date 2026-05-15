@@ -1,5 +1,5 @@
 db:
-  path: "data/warehouse.db"
+  path: "/data/warehouse.db"
 
 app:
   # max at 50
