@@ -1,4 +1,3 @@
-import yaml
 import sys
 import logging
 from pathlib import Path
@@ -8,12 +7,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-CONFIG_PATH = Path("src/config.yaml")
-
-
-def load_config(path: Path = CONFIG_PATH) -> dict:
-    with path.open("r") as f:
-        return yaml.safe_load(f)
+WORK_DIR = os.getenv("WORK_DIR", "./")
+DB_PATH = Path(WORK_DIR) / "data" / "warehouse.db"
 
 
 def get_logger(name: str = "pipeline") -> logging.Logger:
@@ -35,10 +30,8 @@ def get_logger(name: str = "pipeline") -> logging.Logger:
 
 
 @contextmanager
-def get_db(config: dict | None = None):
-    if config is None:
-        config = load_config()
-    con = duckdb.connect(os.getenv("WORK_DIR") + config["db"]["path"])
+def get_db():
+    con = duckdb.connect(DB_PATH)
     try:
         yield con
     finally:

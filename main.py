@@ -14,7 +14,7 @@ Usage:
 
 import sys
 import pendulum
-from src.utils import get_logger, load_config, get_db, chunk_list
+from src.utils import get_logger, get_db, chunk_list
 from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
 from src.warehouse import (
     init_tables,
@@ -32,8 +32,6 @@ from src.agents import scrape_and_load
 from src.matching import match_videos_to_agents
 
 logger = get_logger("main")
-config = load_config()
-
 
 
 
@@ -67,7 +65,7 @@ def daily():
 
 def initial_discover():
     """Discover videos for all agent-related topics. Uses 100 quota units per topic."""
-    with get_db(config) as con:
+    with get_db() as con:
         topics = [
             "Zenless Zone Zero guide",
             "Zenless Zone Zero character showcase",
@@ -90,9 +88,9 @@ def initial_discover():
 
 def discover():
     """Discover recently published videos. Uses ~100 quota units."""
-    with get_db(config) as con:
+    with get_db() as con:
         topic = "Zenless Zone Zero"
-        max_results = config["app"]["daily_video_ingestion"]
+        max_results = 30
         published_after = pendulum.now().subtract(days=1).to_rfc3339_string()
 
         items = search_videos(topic, max_results, published_after)
@@ -102,7 +100,7 @@ def discover():
 
 def enrich_videos():
     """Fetch up-to-date stats for all known videos."""
-    with get_db(config) as con:
+    with get_db() as con:
         ids = get_video_ids(con)
         if not ids:
             logger.info("No videos to enrich")
@@ -118,7 +116,7 @@ def enrich_videos():
 
 def enrich_channels():
     """Fetch channel details for channels missing thumbnail/country."""
-    with get_db(config) as con:
+    with get_db() as con:
         ids = get_channel_ids_needing_enrichment(con)
         if not ids:
             logger.info("No channels to enrich")
@@ -134,7 +132,7 @@ def enrich_channels():
 
 def query(sql: str):
     """Run an ad-hoc SQL query and display results."""
-    with get_db(config) as con:
+    with get_db() as con:
         con.sql(sql).show()
 
 
