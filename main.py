@@ -10,11 +10,14 @@ Usage:
     uv run main.py enrich-channels    Enrich channel metadata
     uv run main.py match              Build video-agent associations
     uv run main.py query <sql>        Run SQL queries in the warehouse
+    uv run main.py publish            Copy versioned warehouse
 """
 
 import sys
 import pendulum
-from src.utils import get_logger, get_db, chunk_list
+from pathlib import Path
+import shutil
+from src.utils import WORK_DIR, get_logger, get_db, chunk_list
 from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
 from src.warehouse import (
     init_tables,
@@ -137,6 +140,24 @@ def query(sql: str):
         con.sql(sql).show()
 
 
+def publish():
+    ts = pendulum.now("UTC").format("YYYY-MM-DDTHH-mm-ss[Z]")
+
+    out_dir = Path("artifacts/warehouse")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    source_db = Path(WORK_DIR) / "data" / "warehouse.db"
+
+    if not source_db.exists():
+        raise FileNotFoundError("warehouse.db not found after pipeline run")
+
+    versioned = out_dir / f"warehouse_{ts}.db"
+    latest = out_dir / "latest.db"
+
+    shutil.copy2(source_db, versioned)
+    shutil.copy2(source_db, latest)
+
+
 COMMANDS = {
     "setup": setup,
     "daily": daily,
@@ -147,6 +168,7 @@ COMMANDS = {
     "enrich-videos": enrich_videos,
     "enrich-channels": enrich_channels,
     "match": match_videos_to_agents,
+    "publish": publish,
 }
 
 

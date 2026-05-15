@@ -1,7 +1,7 @@
 name: Daily Pipeline
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   schedule:
@@ -31,25 +31,16 @@ jobs:
       - name: Install local modules
         run: uv pip install -e .
 
-      - name: Discover Videos
-        run: uv run src/pipelines/daily_video_discovery.py
-
-      - name: Enrich Videos
-        run: uv run src/pipelines/enrich_video.py
-
-      - name: Enrich Channels
-        run: uv run src/pipelines/enrich_channel.py
-
-      - name: Commit updated warehouse
+      - name: Run full pipeline
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          uv run python main.py daily
+          uv run python main.py match
 
-          git add data/warehouse.db -f
+      - name: Build versioned warehouse snapshot
+        run: uv run python main.py publish
 
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update warehouse snapshot [skip ci]"
-            git push
-          fi
+      - name: Upload warehouse artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: warehouse-${{ github.run_id }}
+          path: artifacts/warehouse/
