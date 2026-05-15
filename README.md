@@ -135,4 +135,4 @@ Manual aliases (`src/data/aliases.json`) are needed because:
 
 ### Next Steps
 
-IDK dude, help me
+- implement dim_patch
