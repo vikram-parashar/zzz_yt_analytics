@@ -1,7 +1,6 @@
 import time
 import hashlib
 import json
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -9,12 +8,10 @@ import pendulum
 import requests
 from bs4 import BeautifulSoup
 
-from src.utils import get_db, get_logger, load_config
+from src.utils import WORK_DIR, get_db, get_logger
 from src.warehouse import get_agent_names
 
 logger = get_logger(__name__)
-
-WORK_DIR = os.getenv("WORK_DIR", "./")
 
 WIKI_URL = "https://www.prydwen.gg/zenless/characters"
 WIKI_BASE_URL = "https://www.prydwen.gg"
@@ -204,7 +201,6 @@ def scrape_and_load():
         with open(ALIASES_PATH) as f:
             alias_map = json.load(f)
 
-        config = load_config()
         session = _make_session()
 
         html = scrape_wiki(session)
@@ -221,7 +217,7 @@ def scrape_and_load():
 
         logger.info("agents.loaded_agents count=%d", len(agents))
 
-        with get_db(config) as con:
+        with get_db() as con:
             upsert_agent(con, agents)
             upsert_aliases(con, alias_map)
 

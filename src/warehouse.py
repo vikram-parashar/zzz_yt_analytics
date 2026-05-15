@@ -165,7 +165,7 @@ def _video_stats_to_df(items: list[dict]) -> pd.DataFrame:
                 }
             )
         except KeyError:
-            logger.warning(f"Skipping video stats item with missing keys")
+            logger.warning("Skipping video stats item with missing keys")
             continue
     return pd.DataFrame(records)
 
@@ -192,7 +192,7 @@ def _channel_stats_to_df(items: list[dict]) -> pd.DataFrame:
                 }
             )
         except KeyError:
-            logger.warning(f"Skipping channel stats item with missing keys")
+            logger.warning("Skipping channel stats item with missing keys")
             continue
     return pd.DataFrame(records)
 
