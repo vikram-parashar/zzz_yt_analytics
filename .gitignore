@@ -13,4 +13,5 @@ data/raw
 
 # duckdb - shoudnt commit, using github actions
 data/warehouse.db
+data/warehouse.db.wal
 artifacts
