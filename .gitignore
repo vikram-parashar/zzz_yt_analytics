@@ -9,4 +9,8 @@ wheels/
 # Virtual environments
 .venv
 .env
-data
+data/raw
+
+# duckdb - shoudnt commit, using github actions
+data/warehouse.db
+artifacts
