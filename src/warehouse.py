@@ -2,7 +2,7 @@ import re
 import pandas as pd
 import pendulum
 
-from src.utils import get_logger, load_config, get_db
+from src.utils import get_logger, get_db
 
 logger = get_logger(__name__)
 
@@ -10,6 +10,7 @@ TABLE_DDL = {
     "dim_agent": """
         CREATE TABLE IF NOT EXISTS dim_agent (
             name VARCHAR UNIQUE PRIMARY KEY,
+            img VARCHAR,
             rank VARCHAR,
             attribute VARCHAR,
             speciality VARCHAR,
@@ -215,6 +216,7 @@ def insert_discovered_videos(con, df: pd.DataFrame):
         """,
         [today],
     )
+
 
 def upsert_video_details(con, df: pd.DataFrame):
     if df.empty:

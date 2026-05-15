@@ -1,32 +1,33 @@
-import json
+import time
 import hashlib
+import json
 import os
 from pathlib import Path
 
 import pandas as pd
-import requests
 import pendulum
+import requests
 from bs4 import BeautifulSoup
 
-from src.utils import get_logger, load_config, get_db
+from src.utils import get_db, get_logger, load_config
+from src.warehouse import get_agent_names
 
 logger = get_logger(__name__)
+
 WORK_DIR = os.getenv("WORK_DIR", "./")
-WIKI_URL = "https://zenless-zone-zero.fandom.com/wiki/Agent"
-RAW_DIR = Path(WORK_DIR + "/data/raw")
-STAGE_DIR = Path(WORK_DIR + "/data/stage")
-ALIASES_PATH = Path(WORK_DIR + "/data/aliases.json")
+
+WIKI_URL = "https://www.prydwen.gg/zenless/characters"
+WIKI_BASE_URL = "https://www.prydwen.gg"
+
+RAW_DIR = Path(WORK_DIR) / "data" / "raw"
+ALIASES_PATH = Path(WORK_DIR) / "data" / "aliases.json"
 
 
 def _make_session() -> requests.Session:
     session = requests.Session()
     session.headers.update(
         {
-            "User-Agent": (
-                "Mozilla/5.0 (X11; Linux x86_64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/136.0.0.0 Safari/537.36"
-            ),
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Connection": "keep-alive",
@@ -35,14 +36,32 @@ def _make_session() -> requests.Session:
     return session
 
 
-def scrape_wiki() -> str:
+def scrape_wiki(session: requests.Session) -> str:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Fetching agents page from wiki")
-    html = _make_session().get(WIKI_URL).text
+    logger.info("scrape.start url=%s", WIKI_URL)
+    start = time.perf_counter()
+
+    try:
+        resp = session.get(WIKI_URL, timeout=30)
+        resp.raise_for_status()
+    except Exception:
+        logger.exception("scrape.http_failed url=%s", WIKI_URL)
+        raise
+
+    html = resp.text
+    elapsed = time.perf_counter() - start
+
+    logger.info(
+        "scrape.fetched status=%s bytes=%s latency=%.2fs",
+        resp.status_code,
+        len(html),
+        elapsed,
+    )
 
     new_hash = hashlib.md5(html.encode()).hexdigest()
     latest_path = RAW_DIR / "agents_latest.html"
+
     old_hash = (
         hashlib.md5(latest_path.read_bytes()).hexdigest()
         if latest_path.exists()
@@ -50,169 +69,167 @@ def scrape_wiki() -> str:
     )
 
     if new_hash == old_hash:
-        logger.info("No change detected in agents page — skipping save")
-    else:
-        run_date = pendulum.now("UTC").to_datetime_string()
-        latest_path.write_text(html, encoding="utf-8")
-        (RAW_DIR / f"agents_{run_date}.html").write_text(html, encoding="utf-8")
-        logger.info(f"Saved snapshot | hash={new_hash}")
+        logger.info("scrape.no_change hash=%s", new_hash)
+        return html
+
+    run_date = pendulum.now("UTC").to_datetime_string()
+
+    latest_path.write_text(html, encoding="utf-8")
+    snapshot_path = RAW_DIR / f"agents_{run_date}.html"
+    snapshot_path.write_text(html, encoding="utf-8")
+
+    logger.info(
+        "scrape.saved_snapshot hash=%s snapshot=%s latest=%s",
+        new_hash,
+        snapshot_path.name,
+        latest_path.name,
+    )
 
     return html
 
 
-def _extract_agent_row(cells, is_upcoming: bool = False) -> dict | None:
-    try:
-        icon = cells[0].img.get("data-src") or cells[0].img.get("src")
-        name = cells[1].a.text
-        attribute = cells[3].a["title"]
-        speciality = cells[4].a["title"]
-        faction = cells[6].a["title"]
+def parse_agents(soup: BeautifulSoup) -> list[dict]:
+    logger.info("parse.start")
 
-        if is_upcoming:
-            return {
-                "icon": icon,
-                "name": name,
-                "rank": None,
-                "attribute": attribute,
-                "speciality": speciality,
-                "faction": faction,
-                "release_date": None,
-                "release_version": None,
-            }
+    cards = soup.find_all(class_="avatar-card")
+    logger.info("parse.cards_found count=%d", len(cards))
 
-        rank = cells[2].span["title"].split(" ")[1].strip()
-        release_strings = list(cells[7].stripped_strings)
-        release_date = release_strings[0]
-        release_version = release_strings[3].split(" ")[1]
-
-        return {
-            "icon": icon,
-            "name": name,
-            "rank": rank,
-            "attribute": attribute,
-            "speciality": speciality,
-            "faction": faction,
-            "release_date": release_date,
-            "release_version": release_version,
-        }
-    except Exception:
-        logger.exception("Failed to parse agent row — skipping")
-        return None
-
-
-def parse_agents(html: str | None = None) -> pd.DataFrame:
-    if html is None:
-        html = (RAW_DIR / "agents_latest.html").read_text()
-
-    soup = BeautifulSoup(html, "html.parser")
-    tables = soup.find_all("table")
-
-    # Playable agents (2nd table)
     agents = []
-    logger.info(soup)
-    try:
-        for row in tables[1].tbody.find_all("tr")[1:]:
-            logger.info(row.find_all("td"))
-            fields = _extract_agent_row(row.find_all("td"))
-            if fields:
-                agents.append(fields)
-    except (AttributeError, IndexError):
-        logger.error("Could not find playable agents table")
 
-    # Upcoming agents (3rd table)
-    try:
-        for row in tables[2].tbody.find_all("tr")[1:]:
-            fields = _extract_agent_row(row.find_all("td"), is_upcoming=True)
-            if fields:
-                agents.append(fields)
-    except (AttributeError, IndexError):
-        logger.warning("Could not find upcoming agents table")
+    for i, card in enumerate(cards):
+        try:
+            data = {}
+
+            data["rank"] = "S" if card.find(class_="rarity-S") else None
+            if not data["rank"]:
+                data["rank"] = "A" if card.find(class_="rarity-A") else None
+
+            emp_name = card.find(class_="emp-name")
+            data["name"] = emp_name.get_text().strip() if emp_name else None
+
+            img = card.find("img", alt=lambda x: x and x == data["name"])
+            data["img"] = (WIKI_BASE_URL + str(img["data-src"])) if img else None
+
+            element_div = card.find(class_="element")
+            element = (
+                element_div.find("img", alt=lambda x: x and x.strip())
+                if element_div
+                else None
+            )
+            data["attribute"] = element["alt"] if element else None
+
+            class_div = card.find(class_="class")
+            clas = (
+                class_div.find("img", alt=lambda x: x and x.strip())
+                if class_div
+                else None
+            )
+            data["speciality"] = clas["alt"] if clas else None
+
+            agents.append(data)
+
+        except Exception:
+            logger.exception("parse.card_failed index=%d", i)
+
+    logger.info(
+        "parse.done parsed=%d success_rate=%.2f",
+        len(agents),
+        len(agents) / len(cards) if cards else 0,
+    )
+
+    return agents
+
+
+def upsert_agent(con, agents: list[dict]):
+    logger.info("db.agent_upsert.start rows=%d", len(agents))
 
     df = pd.DataFrame(agents)
-    if df.empty:
-        logger.warning("No agents parsed")
-        return df
+    con.register("agent_tmp", df)
 
-    # Convert release_date strings → actual dates
-    mask = df["release_date"].notna()
-    df.loc[mask, "release_date"] = df.loc[mask, "release_date"].apply(
-        lambda x: pendulum.from_format(x, "MMMM DD, YYYY").date()
-    )
-
-    # Known data fix
-    df.loc[df["name"] == "Jane Doe", "faction"] = (
-        "Criminal Investigation Special Response Team"
-    )
-
-    logger.info(f"Parsed {len(df)} agents total")
-    return df
-
-
-def _build_alias_rows(agent_names: pd.Series, alias_map: dict) -> pd.DataFrame:
-    """Build a DataFrame of (name, alias) pairs from the alias JSON."""
-    rows = []
-    for name in agent_names:
-        if name in alias_map:
-            for alias in alias_map[name]:
-                rows.append({"name": name, "alias": alias})
-        else:
-            logger.warning(f"No aliases defined for: {name}")
-    return pd.DataFrame(rows)
-
-
-def load_agents(df: pd.DataFrame):
-    """Replace dim_agent and bridge_agent_alias with fresh data."""
-    config = load_config()
-
-    STAGE_DIR.mkdir(parents=True, exist_ok=True)
-    stage_path = STAGE_DIR / "agents.csv"
-    df.to_csv(stage_path, index=False)
-    logger.info(f"Staged agents CSV → {stage_path}")
-
-    with get_db(config) as con:
-        # Refresh dimension tables
-        con.execute("DELETE FROM dim_agent")
-        con.execute("DELETE FROM bridge_agent_alias")
-
-        # Insert agents
-        con.register(
-            "agents_tmp",
-            df[
-                [
-                    "name",
-                    "rank",
-                    "attribute",
-                    "speciality",
-                    "faction",
-                    "release_date",
-                    "release_version",
-                ]
-            ],
-        )
+    try:
         con.execute("""
-            INSERT INTO dim_agent (name, rank, attribute, speciality, faction, release_date, release_version)
-            SELECT name, rank, attribute, speciality, faction, release_date, release_version
-            FROM agents_tmp
+            INSERT INTO dim_agent (
+                name, img, rank, attribute, speciality
+            )
+            SELECT name, img, rank, attribute, speciality
+            FROM agent_tmp
+            ON CONFLICT(name)
+            DO UPDATE SET
+                img = excluded.img,
+                rank = excluded.rank,
+                attribute = excluded.attribute,
+                speciality = excluded.speciality
         """)
-        count = con.execute("SELECT COUNT(*) FROM dim_agent").fetchone()[0]
-        logger.info(f"Loaded {count} agents into dim_agent")
+    except Exception:
+        logger.exception("db.agent_upsert.failed")
+        raise
 
-        # Insert aliases
-        with open(ALIASES_PATH) as f:
-            alias_map = json.load(f)
+    logger.info("db.agent_upsert.done")
 
-        agent_names = con.execute("SELECT name FROM dim_agent").df()["name"]
-        alias_df = _build_alias_rows(agent_names, alias_map)
 
-        if not alias_df.empty:
-            con.register("alias_tmp", alias_df)
-            con.execute("INSERT INTO bridge_agent_alias SELECT * FROM alias_tmp")
-            logger.info(f"Loaded {len(alias_df)} alias rows into bridge_agent_alias")
+def upsert_aliases(con, alias_map: dict):
+    logger.info("db.alias_upsert.start")
+
+    agent_names = get_agent_names(con)
+
+    aliases_list = []
+    for agent_name in agent_names:
+        aliases = alias_map.get(agent_name) or []
+        aliases.append(agent_name)
+        aliases_list.extend([{"name": agent_name, "alias": alias} for alias in aliases])
+
+    logger.info("db.alias_upsert.mapped rows=%d", len(aliases_list))
+
+    alias_df = pd.DataFrame(aliases_list)
+    con.register("alias_tmp", alias_df)
+
+    try:
+        con.execute("""
+            INSERT INTO bridge_agent_alias
+            SELECT *
+            FROM alias_tmp
+            ON CONFLICT DO NOTHING
+        """)
+    except Exception:
+        logger.exception("db.alias_upsert.failed")
+        raise
+
+    logger.info("db.alias_upsert.done")
 
 
 def scrape_and_load():
-    html = scrape_wiki()
-    df = parse_agents(html)
-    if not df.empty:
-        load_agents(df)
-    logger.info("Agent pipeline complete")
+    logger.info("agents.start")
+
+    try:
+        with open(ALIASES_PATH) as f:
+            alias_map = json.load(f)
+
+        config = load_config()
+        session = _make_session()
+
+        html = scrape_wiki(session)
+
+        # with open("data/raw/agents_latest.html", "r", encoding="utf-8") as f:
+        #     html = f.read()
+
+        soup = BeautifulSoup(html, "html.parser")
+        agents = parse_agents(soup=soup)
+
+        if not agents:
+            logger.warning("agents.no_agents_parsed")
+            return
+
+        logger.info("agents.loaded_agents count=%d", len(agents))
+
+        with get_db(config) as con:
+            upsert_agent(con, agents)
+            upsert_aliases(con, alias_map)
+
+        logger.info("agents.success")
+
+    except Exception:
+        logger.exception("agents.failed")
+        raise
+
+    finally:
+        logger.info("agents.end")
