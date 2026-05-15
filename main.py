@@ -17,7 +17,7 @@ import sys
 import pendulum
 from pathlib import Path
 import shutil
-from src.utils import WORK_DIR, get_logger, get_db, chunk_list
+from src.utils import DB_PATH, WORK_DIR, get_logger, get_db, chunk_list
 from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
 from src.warehouse import (
     init_tables,
@@ -146,16 +146,20 @@ def publish():
     out_dir = Path("artifacts/warehouse")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    source_db = Path(WORK_DIR) / "data" / "warehouse.db"
-
-    if not source_db.exists():
+    if not DB_PATH.exists():
         raise FileNotFoundError("warehouse.db not found after pipeline run")
 
     versioned = out_dir / f"warehouse_{ts}.db"
     latest = out_dir / "latest.db"
 
-    shutil.copy2(source_db, versioned)
-    shutil.copy2(source_db, latest)
+    shutil.copy2(DB_PATH, versioned)
+    shutil.copy2(DB_PATH, latest)
+
+    db_size_mb = DB_PATH.stat().st_size / (1024 * 1024)
+    logger.info(
+        f"Published warehouse snapshot → {versioned.name} ({db_size_mb:.1f} MB)"
+    )
+    logger.info("Published latest copy → latest.db")
 
 
 COMMANDS = {

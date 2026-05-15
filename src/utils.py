@@ -7,8 +7,9 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-WORK_DIR = os.getenv("WORK_DIR", "./")
+WORK_DIR = os.getenv("WORK_DIR", ".")
 DB_PATH = Path(WORK_DIR) / "data" / "warehouse.db"
+SEED_PATH = Path(WORK_DIR) / "data" / "warehouse_seed.db"
 
 
 def get_logger(name: str = "pipeline") -> logging.Logger:
@@ -29,9 +30,31 @@ def get_logger(name: str = "pipeline") -> logging.Logger:
     return logger
 
 
+def bootstrap_from_seed():
+    if DB_PATH.exists():
+        return False
+
+    if not SEED_PATH.exists():
+        return False
+
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    import shutil
+
+    shutil.copy2(SEED_PATH, DB_PATH)
+    return True
+
+
 @contextmanager
 def get_db():
-    con = duckdb.connect(DB_PATH)
+    if not DB_PATH.exists() and SEED_PATH.exists():
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        import shutil
+
+        shutil.copy2(SEED_PATH, DB_PATH)
+
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    con = duckdb.connect(str(DB_PATH))
     try:
         yield con
     finally:
