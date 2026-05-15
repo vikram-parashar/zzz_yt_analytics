@@ -19,6 +19,39 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout
 
+      - name: Cache DuckDB warehouse
+        uses: actions/cache@v4
+        id: cache
+        with:
+          path: data/warehouse.db
+          key: duckdb-warehouse-${{ github.run_id }}
+          restore-keys: |
+            duckdb-warehouse-
+
+      - name: Download previous warehouse artifact
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: dawidd6/action-download-artifact@v9
+        continue-on-error: true
+        id: artifact
+        with:
+          name: warehouse-latest
+          workflow: daily-pipeline.yml
+          if_no_artifact_found: ignore
+
+      - name: Restore warehouse.db
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          if [ -f "latest.db" ]; then
+            mkdir -p data
+            mv latest.db data/warehouse.db
+            echo "Restored warehouse.db from artifact"
+          elif [ -f "data/warehouse_seed.db" ]; then
+            cp data/warehouse_seed.db data/warehouse.db
+            echo "Bootstrapped warehouse.db from seed"
+          else
+            echo "No seed or artifact found — pipeline will create tables from scratch"
+          fi
+
       - name: Install uv
         uses: astral-sh/setup-uv
 
@@ -31,16 +64,26 @@ jobs:
       - name: Install local modules
         run: uv pip install -e .
 
-      - name: Run full pipeline
-        run: |
-          uv run python main.py daily
-          uv run python main.py match
+      - name: Run daily pipeline
+        run: uv run python main.py daily
+
+      - name: Run video-agent matching
+        run: uv run python main.py match
 
       - name: Build versioned warehouse snapshot
         run: uv run python main.py publish
 
-      - name: Upload warehouse artifact
+      - name: Upload versioned artifact
         uses: actions/upload-artifact@v4
         with:
           name: warehouse-${{ github.run_id }}
           path: artifacts/warehouse/
+          retention-days: 90
+
+      - name: Upload latest artifact (for restore)
+        uses: actions/upload-artifact@v4
+        with:
+          name: warehouse-latest
+          path: artifacts/warehouse/latest.db
+          retention-days: 90
+          overwrite: true
