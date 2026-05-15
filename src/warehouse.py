@@ -23,7 +23,8 @@ TABLE_DDL = {
         CREATE TABLE IF NOT EXISTS bridge_agent_alias (
             name VARCHAR,
             alias VARCHAR,
-            PRIMARY KEY (name, alias)
+            PRIMARY KEY (name, alias),
+            FOREIGN KEY (name) REFERENCES dim_agent(name)
         )
     """,
     "dim_video": """
@@ -78,7 +79,19 @@ TABLE_DDL = {
             agent_name VARCHAR,
             confidence REAL,
             PRIMARY KEY (video_id, agent_name),
-            FOREIGN KEY (video_id) REFERENCES dim_video(video_id)
+            FOREIGN KEY (video_id) REFERENCES dim_video(video_id),
+            FOREIGN KEY (agent_name) REFERENCES dim_agent(name)
+        )
+    """,
+    "dim_patch": """
+        CREATE TABLE IF NOT EXISTS dim_patch (
+            version      VARCHAR PRIMARY KEY,
+            release_date DATE,
+            banner_agent VARCHAR,
+            banner_start DATE,
+            banner_end   DATE,
+            notes        VARCHAR,
+            FOREIGN KEY (banner_agent) REFERENCES dim_agent(name)
         )
     """,
 }
