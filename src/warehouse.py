@@ -55,8 +55,6 @@ TABLE_DDL = {
             view_count BIGINT,
             like_count BIGINT,
             comment_count BIGINT,
-            dislike_count BIGINT,
-            favorite_count BIGINT,
             ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (video_id, snapshot_date),
             FOREIGN KEY (video_id) REFERENCES dim_video(video_id)
@@ -150,8 +148,6 @@ def _video_stats_to_df(items: list[dict]) -> pd.DataFrame:
                     .get("url", ""),
                     "view_count": stats.get("viewCount"),
                     "like_count": stats.get("likeCount"),
-                    "dislike_count": stats.get("dislikeCount"),
-                    "favorite_count": stats.get("favoriteCount"),
                     "comment_count": stats.get("commentCount"),
                 }
             )
@@ -239,10 +235,8 @@ def upsert_video_details(con, df: pd.DataFrame):
     con.execute(
         """
         INSERT OR REPLACE INTO fact_video_daily
-            (video_id, snapshot_date, view_count, like_count, comment_count,
-             dislike_count, favorite_count, ingested_at)
-        SELECT video_id, ?, view_count, like_count, comment_count,
-               dislike_count, favorite_count, ?
+            (video_id, snapshot_date, view_count, like_count, comment_count, ingested_at)
+        SELECT video_id, ?, view_count, like_count, comment_count, ?
         FROM tmp
         """,
         [now.to_date_string(), now.to_datetime_string()],
