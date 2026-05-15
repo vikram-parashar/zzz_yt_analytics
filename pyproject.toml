@@ -1,17 +1,19 @@
 [project]
 name = "zzz_analytics"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Zenless Zone Zero YouTube Analytics — character popularity & meta shift tracker"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
   "beautifulsoup4>=4.14.3",
+  "dotenv>=0.9.9",
   "duckdb>=1.4.3",
   "google-api-python-client>=2.187.0",
   "pandas>=2.3.3",
   "pendulum>=3.1.0",
   "python-dotenv>=1.2.1",
   "pyyaml>=6.0.3",
+  "requests>=2.32.0",
   "tqdm>=4.67.3",
 ]
 
