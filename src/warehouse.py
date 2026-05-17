@@ -94,6 +94,9 @@ TABLE_DDL = {
             FOREIGN KEY (banner_agent) REFERENCES dim_agent(name)
         )
     """,
+    "pipeline_runs_seq": """
+        CREATE SEQUENCE IF NOT EXISTS pipeline_runs_seq START 1
+    """,
     "pipeline_runs": """
         CREATE TABLE IF NOT EXISTS pipeline_runs (
             id           INTEGER PRIMARY KEY DEFAULT nextval('pipeline_runs_seq'),
@@ -105,9 +108,6 @@ TABLE_DDL = {
             rows_affected INTEGER DEFAULT 0,
             error        VARCHAR
         )
-    """,
-    "pipeline_runs_seq": """
-        CREATE SEQUENCE IF NOT EXISTS pipeline_runs_seq START 1
     """,
 }
 
