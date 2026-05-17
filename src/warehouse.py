@@ -94,6 +94,21 @@ TABLE_DDL = {
             FOREIGN KEY (banner_agent) REFERENCES dim_agent(name)
         )
     """,
+    "pipeline_runs": """
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id           INTEGER PRIMARY KEY DEFAULT nextval('pipeline_runs_seq'),
+            pipeline     VARCHAR NOT NULL,
+            run_date     DATE    NOT NULL,
+            started_at   TIMESTAMP,
+            completed_at TIMESTAMP,
+            status       VARCHAR DEFAULT 'running',
+            rows_affected INTEGER DEFAULT 0,
+            error        VARCHAR
+        )
+    """,
+    "pipeline_runs_seq": """
+        CREATE SEQUENCE IF NOT EXISTS pipeline_runs_seq START 1
+    """,
 }
 
 
@@ -102,6 +117,55 @@ def init_tables():
         for name, ddl in TABLE_DDL.items():
             con.execute(ddl)
             logger.info(f"Ensured table exists: {name}")
+
+
+def start_pipeline_run(pipeline: str) -> int:
+    """Insert a new pipeline_runs row with status='running' and return its id."""
+    now = pendulum.now()
+    with get_db() as con:
+        con.execute(
+            """
+            INSERT INTO pipeline_runs (pipeline, run_date, started_at, status)
+            VALUES (?, ?, ?, 'running')
+            """,
+            [pipeline, now.to_date_string(), now.to_datetime_string()],
+        )
+        run_id = con.execute("SELECT last_insert_id()").fetchone()[0]
+    logger.info(f"pipeline_runs | started | id={run_id} pipeline={pipeline}")
+    return run_id
+
+
+def finish_pipeline_run(run_id: int, rows_affected: int = 0, error: str | None = None):
+    """Mark a pipeline run as completed (or failed)."""
+    status = "failed" if error else "completed"
+    now = pendulum.now()
+    with get_db() as con:
+        con.execute(
+            """
+            UPDATE pipeline_runs
+            SET completed_at = ?, status = ?, rows_affected = ?, error = ?
+            WHERE id = ?
+            """,
+            [now.to_datetime_string(), status, rows_affected, error, run_id],
+        )
+    logger.info(f"pipeline_runs | {status} | id={run_id} rows={rows_affected}")
+
+
+def did_pipeline_run_today(pipeline: str) -> bool:
+    """Check whether a given pipeline has a successful run for today."""
+    today = pendulum.now().to_date_string()
+    with get_db() as con:
+        result = con.execute(
+            """
+            SELECT COUNT(*)
+            FROM pipeline_runs
+            WHERE pipeline = ?
+              AND run_date  = ?
+              AND status    = 'completed'
+            """,
+            [pipeline, today],
+        ).fetchone()
+    return result[0] > 0
 
 
 def _video_search_to_df(items: list[dict]) -> pd.DataFrame:

@@ -17,7 +17,7 @@ import sys
 import pendulum
 from pathlib import Path
 import shutil
-from src.utils import DB_PATH, WORK_DIR, get_logger, get_db, chunk_list
+from src.utils import DB_PATH, get_logger, get_db, chunk_list
 from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
 from src.warehouse import (
     init_tables,
@@ -30,13 +30,35 @@ from src.warehouse import (
     get_video_ids,
     get_channel_ids_needing_enrichment,
     get_agent_names,
+    start_pipeline_run,
+    finish_pipeline_run,
+    did_pipeline_run_today,
 )
 from src.agents import scrape_and_load
 from src.matching import match_videos_to_agents
 
 logger = get_logger("main")
 
-# ── Pipelines ─────────────────────────────────────────────────────
+
+def run_tracked(pipeline_name: str):
+    """Decorator that wraps a pipeline function with pipeline_runs tracking."""
+
+    def decorator(fn):
+        def wrapper(*args, **kwargs):
+            run_id = start_pipeline_run(pipeline_name)
+            try:
+                result = fn(*args, **kwargs)
+                finish_pipeline_run(run_id)
+                return result
+            except Exception as e:
+                finish_pipeline_run(run_id, error=str(e))
+                raise
+
+        wrapper.__name__ = fn.__name__
+        wrapper.__doc__ = fn.__doc__
+        return wrapper
+
+    return decorator
 
 
 def setup():
@@ -55,14 +77,28 @@ def setup():
 
 
 def daily():
-    """Daily pipeline: discover new videos → enrich stats."""
+    """Daily pipeline: discover new videos → enrich stats.
+
+    Idempotent — skips if a successful 'daily' run already exists for today.
+    """
+    if did_pipeline_run_today("daily"):
+        logger.info("Daily pipeline already ran today — skipping")
+        return
+
     logger.info("=" * 50)
     logger.info("DAILY PIPELINE")
     logger.info("=" * 50)
 
-    discover()
-    enrich_videos()
-    enrich_channels()
+    init_tables()  # ensure pipeline_runs exists on fresh warehouse
+    run_id = start_pipeline_run("daily")
+    try:
+        discover()
+        enrich_videos()
+        enrich_channels()
+        finish_pipeline_run(run_id)
+    except Exception as e:
+        finish_pipeline_run(run_id, error=str(e))
+        raise
 
     logger.info("Daily pipeline complete")
 
@@ -163,15 +199,15 @@ def publish():
 
 
 COMMANDS = {
-    "setup": setup,
-    "daily": daily,
+    "setup": run_tracked("setup")(setup),
+    "daily": daily,  # daily manages its own tracking (idempotency check)
     "init-tables": init_tables,
-    "scrape-agents": scrape_and_load,
-    "discover": discover,
-    "initial-discover": initial_discover,
-    "enrich-videos": enrich_videos,
-    "enrich-channels": enrich_channels,
-    "match": match_videos_to_agents,
+    "scrape-agents": run_tracked("scrape-agents")(scrape_and_load),
+    "discover": run_tracked("discover")(discover),
+    "initial-discover": run_tracked("initial-discover")(initial_discover),
+    "enrich-videos": run_tracked("enrich-videos")(enrich_videos),
+    "enrich-channels": run_tracked("enrich-channels")(enrich_channels),
+    "match": run_tracked("match")(match_videos_to_agents),
     "publish": publish,
 }
 
