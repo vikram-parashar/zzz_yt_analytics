@@ -89,7 +89,6 @@ def daily():
     logger.info("DAILY PIPELINE")
     logger.info("=" * 50)
 
-    init_tables()
     run_id = start_pipeline_run("daily")
     try:
         discover()
