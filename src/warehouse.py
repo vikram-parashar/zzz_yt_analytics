@@ -23,8 +23,7 @@ TABLE_DDL = {
         CREATE TABLE IF NOT EXISTS bridge_agent_alias (
             name VARCHAR,
             alias VARCHAR,
-            PRIMARY KEY (name, alias),
-            FOREIGN KEY (name) REFERENCES dim_agent(name)
+            PRIMARY KEY (name, alias)
         )
     """,
     "dim_video": """
@@ -57,8 +56,7 @@ TABLE_DDL = {
             like_count BIGINT,
             comment_count BIGINT,
             ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (video_id, snapshot_date),
-            FOREIGN KEY (video_id) REFERENCES dim_video(video_id)
+            PRIMARY KEY (video_id, snapshot_date)
         )
     """,
     "fact_channel_daily": """
@@ -69,8 +67,7 @@ TABLE_DDL = {
             view_count BIGINT,
             video_count INTEGER,
             ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (channel_id, snapshot_date),
-            FOREIGN KEY (channel_id) REFERENCES dim_channel(channel_id)
+            PRIMARY KEY (channel_id, snapshot_date)
         )
     """,
     "bridge_video_agent": """
@@ -78,9 +75,7 @@ TABLE_DDL = {
             video_id VARCHAR,
             agent_name VARCHAR,
             confidence REAL,
-            PRIMARY KEY (video_id, agent_name),
-            FOREIGN KEY (video_id) REFERENCES dim_video(video_id),
-            FOREIGN KEY (agent_name) REFERENCES dim_agent(name)
+            PRIMARY KEY (video_id, agent_name)
         )
     """,
     "dim_patch": """
@@ -90,8 +85,7 @@ TABLE_DDL = {
             banner_agent VARCHAR,
             banner_start DATE,
             banner_end   DATE,
-            notes        VARCHAR,
-            FOREIGN KEY (banner_agent) REFERENCES dim_agent(name)
+            notes        VARCHAR
         )
     """,
     "pipeline_runs_seq": """
@@ -123,14 +117,14 @@ def start_pipeline_run(pipeline: str) -> int:
     """Insert a new pipeline_runs row with status='running' and return its id."""
     now = pendulum.now()
     with get_db() as con:
-        con.execute(
+        run_id = con.execute(
             """
             INSERT INTO pipeline_runs (pipeline, run_date, started_at, status)
             VALUES (?, ?, ?, 'running')
+            RETURNING id
             """,
             [pipeline, now.to_date_string(), now.to_datetime_string()],
-        )
-        run_id = con.execute("SELECT last_insert_id()").fetchone()[0]
+        ).fetchone()[0]
     logger.info(f"pipeline_runs | started | id={run_id} pipeline={pipeline}")
     return run_id
 

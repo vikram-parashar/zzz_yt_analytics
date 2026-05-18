@@ -89,7 +89,6 @@ def daily():
     logger.info("DAILY PIPELINE")
     logger.info("=" * 50)
 
-    init_tables()  # ensure pipeline_runs exists on fresh warehouse
     run_id = start_pipeline_run("daily")
     try:
         discover()
