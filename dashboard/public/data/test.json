@@ -1,0 +1,81 @@
+{
+  "last_updated": "2026-05-18T00:00:00Z",
+  "summary": {
+    "total_agents": 28,
+    "total_videos": 3420,
+    "total_channels": 156,
+    "total_facts": 48200
+  },
+  "top_agents": [
+    {
+      "name": "Miyabi",
+      "rank": "S",
+      "attribute": "Ice",
+      "total_views": 12500000,
+      "total_likes": 450000,
+      "video_count": 142
+    },
+    {
+      "name": "Yanagi",
+      "rank": "S",
+      "attribute": "Electric",
+      "total_views": 11200000,
+      "total_likes": 380000,
+      "video_count": 128
+    },
+    {
+      "name": "Lighter",
+      "rank": "S",
+      "attribute": "Fire",
+      "total_views": 9800000,
+      "total_likes": 320000,
+      "video_count": 97
+    },
+    {
+      "name": "Ellen",
+      "rank": "S",
+      "attribute": "Ice",
+      "total_views": 8900000,
+      "total_likes": 290000,
+      "video_count": 115
+    },
+    {
+      "name": "Zhu Yuan",
+      "rank": "S",
+      "attribute": "Ether",
+      "total_views": 8500000,
+      "total_likes": 275000,
+      "video_count": 103
+    }
+  ],
+  "daily_views_trend": [
+    {
+      "date": "2026-05-12",
+      "views": 320000
+    },
+    {
+      "date": "2026-05-13",
+      "views": 285000
+    },
+    {
+      "date": "2026-05-14",
+      "views": 410000
+    },
+    {
+      "date": "2026-05-15",
+      "views": 520000
+    },
+    {
+      "date": "2026-05-16",
+      "views": 480000
+    },
+    {
+      "date": "2026-05-17",
+      "views": 390000
+    },
+    {
+      "date": "2026-05-18",
+      "views": 340000
+    }
+  ]
+}
