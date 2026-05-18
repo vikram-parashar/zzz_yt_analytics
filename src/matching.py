@@ -10,10 +10,12 @@ logger = get_logger(__name__)
 MATCH_WEIGHTS = {"title": 0.6, "tags": 0.3, "description": 0.1}
 
 
-def _compute_confidence(video_row: pd.Series, aliases: pd.DataFrame) -> dict[str, float]:
+def _compute_confidence(
+    video_row: pd.Series, aliases: pd.DataFrame
+) -> dict[str, float]:
     scores: dict[str, float] = {}
     title = video_row["title"].lower()
-    description = video_row["description"].lower()
+    description = (video_row["description"] or "").lower()
     tags_text = " ".join(video_row["tags"]).lower()
 
     for _, alias_row in aliases.iterrows():
@@ -43,7 +45,9 @@ def match_videos_to_agents(con=None):
 
     try:
         aliases = con.sql("SELECT * FROM bridge_agent_alias").df()
-        videos = con.sql("SELECT video_id, title, description, tags FROM dim_video").df()
+        videos = con.sql(
+            "SELECT video_id, title, description, tags FROM dim_video"
+        ).df()
 
         logger.info(f"Matching {len(videos)} videos against {len(aliases)} aliases")
 
@@ -51,11 +55,13 @@ def match_videos_to_agents(con=None):
         for _, video in tqdm(videos.iterrows(), total=len(videos), desc="Matching"):
             scores = _compute_confidence(video, aliases)
             for agent, confidence in scores.items():
-                results.append({
-                    "video_id": video["video_id"],
-                    "agent_name": agent,
-                    "confidence": confidence,
-                })
+                results.append(
+                    {
+                        "video_id": video["video_id"],
+                        "agent_name": agent,
+                        "confidence": confidence,
+                    }
+                )
 
         if results:
             df = pd.DataFrame(results)
