@@ -1,42 +1,66 @@
 {
-  "Harumasa": [
-    "Asaba"
-  ],
-  "Astra Yao": [
-    "Astra"
-  ],
-  "Ju Fufu": [
-    "Fufu",
-    "JuFufu"
-  ],
-  "Jane Doe": [
-    "Jane"
-  ],
-  "Lucy": [
-    "Luciana de Montefio"
-  ],
-  "Nangong Yu": [
-    "Nangong"
-  ],
-  "Orphie Magnusson & Magus": [
-    "Orphie",
-    "Magus"
-  ],
-  "The Storyteller": [
-    "Storyteller"
-  ],
-  "Anby: Soldier 0": [
-    "Soldier 0",
-    "Sanby"
-  ],
-  "Yixuan": [
-    "Yixuan",
-    "Yi xuan"
-  ],
-  "Rina": [
-    "Alexandrina Sebastiane"
-  ],
-  "Billy - Starlight": [
-    "Starlight"
-  ]
+"Alice":["Alice"],
+"Anby":["Anby"],
+"Anby: Soldier 0":["Soldier 0","sanby"],
+"Anton":["Anton"],
+"Aria":["Aria"],
+"Astra Yao":["Astra"],
+"Banyue":["Banyue"],
+"Ben":["Ben"],
+"Billy - Starlight":["Starlight"],
+"Billy":["Billy"],
+"Burnice":["Burnice"],
+"Caesar":["Caesar"],
+"Cissia":["Cissia"],
+"Claret":["Claret"],
+"Corin":["Corin"],
+"Dialyn":["Dialyn"],
+"Ellen":["Ellen"],
+"Evelyn":["Evelyn"],
+"Grace":["Grace"],
+"Harumasa":["Harumasa"],
+"Hugo":["Hugo"],
+"Jane Doe":["Jane Doe"],
+"Ju Fufu":["Ju Fufu","Jufufu"],
+"Koleda":["Koleda"],
+"Lighter":["Lighter"],
+"Lucia":["Lucia"],
+"Lucy":["Lucy"],
+"Lycaon":["Lycaon"],
+"Manato":["Manato"],
+"Miyabi":["Miyabi"],
+"Nangong Yu":["Nangong"],
+"Nekomata":["Nekomata"],
+"Nicole":["Nicole"],
+"Norma":["Norma"],
+"Orphie & Magus":["Orphie"],
+"Pan Yinhu":["Pan Yinhu"],
+"Phoenix":["Phoenix"],
+"Piper":["Piper"],
+"Promeia":["Promeia"],
+"Pulchra":["Pulchra"],
+"Pyrois":["Pyrois"],
+"Qingyi":["Qingyi"],
+"Remielle":["Remielle"],
+"Rina":["Rina"],
+"Roxy":["Roxy"],
+"Seed":["Seed"],
+"Seth":["Seth"],
+"Severian":["Severian"],
+"Sigrid":["Sigrid"],
+"Soldier 11":["Soldier 11"],
+"Soukaku":["Soukaku"],
+"Sunbringer":["Sunbringer"],
+"Sunna":["Sunna"],
+"The Storyteller":["Storyteller"],
+"Trigger":["Trigger"],
+"Velina":["Velina"],
+"Vivian":["Vivian"],
+"Yanagi":["Yanagi"],
+"Ye Shunguang":["Ye Shunguang"],
+"Yidhari":["Yidhari"],
+"Yixuan":["Yixuan","Yi xuan"],
+"Yuzuha":["Yuzuha"],
+"Zhao":["Zhao"],
+"Zhu Yuan":["Zhu Yuan"]
 }

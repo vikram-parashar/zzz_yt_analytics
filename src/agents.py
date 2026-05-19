@@ -172,7 +172,6 @@ def upsert_aliases(con, alias_map: dict):
     aliases_list = []
     for agent_name in agent_names:
         aliases = alias_map.get(agent_name) or []
-        aliases.append(agent_name)
         aliases_list.extend([{"name": agent_name, "alias": alias} for alias in aliases])
 
     logger.info("db.alias_upsert.mapped rows=%d", len(aliases_list))
