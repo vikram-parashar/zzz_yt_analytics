@@ -22,7 +22,6 @@ jobs:
           lfs: true
 
       - name: Download previous warehouse artifact
-        if: steps.cache.outputs.cache-hit != 'true'
         uses: dawidd6/action-download-artifact@v9
         continue-on-error: true
         id: artifact
@@ -32,7 +31,6 @@ jobs:
           if_no_artifact_found: ignore
 
       - name: Restore warehouse.db
-        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           if [ -f "latest.db" ]; then
             mkdir -p data
