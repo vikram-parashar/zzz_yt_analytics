@@ -119,20 +119,23 @@ def initial_discover():
 
         for topic in topics:
             items = search_videos(
-                topic, 50, pendulum.datetime(2024, 1, 1).to_rfc3339_string()
+                query=topic,
+                published_after=pendulum.datetime(2024, 1, 1).to_rfc3339_string(),
             )
             df = _video_search_to_df(items)
             insert_discovered_videos(con, df)
 
 
 def discover():
-    """Discover recently published videos. Uses ~100 quota units."""
     with get_db() as con:
         topic = "Zenless Zone Zero"
-        max_results = 30
         published_after = pendulum.now().subtract(days=1).to_rfc3339_string()
 
-        items = search_videos(topic, max_results, published_after)
+        items = search_videos(
+            query=topic,
+            published_after=published_after,
+            max_pages=5,
+        )
         df = _video_search_to_df(items)
         insert_discovered_videos(con, df)
 

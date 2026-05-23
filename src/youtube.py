@@ -23,28 +23,50 @@ def _get_client():
     return _client
 
 
-def search_videos(query: str, max_results: int, published_after: str) -> list[dict]:
-    logger.info(f"Searching videos | query='{query}'")
+def search_videos(
+    query: str,
+    max_results: int = 50,
+    published_after: str | None = None,
+    published_before: str | None = None,
+    max_pages: int = 10,
+) -> list[dict]:
+    all_items: list[dict] = []
+    page_token: str | None = None
+    pages_fetched = 0
+
     try:
-        res = (
-            _get_client()
-            .search()
-            .list(
+        while pages_fetched < max_pages:
+            request = _get_client().search().list(
                 q=query,
                 part="snippet",
                 type="video",
-                maxResults=max_results,
-                order="relevance",
+                maxResults=min(max_results, 50),
+                order="date",
                 publishedAfter=published_after,
+                publishedBefore=published_before,
+                videoCategoryId=20,
+                relevanceLanguage="en",
+                pageToken=page_token,
             )
-            .execute()
+            res = request.execute()
+            pages_fetched += 1
+
+            items = res.get("items", [])
+            all_items.extend(items)
+
+            page_token = res.get("nextPageToken")
+            if not page_token:
+                break
+
+        logger.info(
+            f"Found {len(all_items)} videos for '{query}' "
+            f"across {pages_fetched} page(s)"
         )
-        items = res.get("items", [])
-        logger.info(f"Found {len(items)} videos for '{query}'")
-        return items
+        return all_items
+
     except HttpError as e:
         logger.error(f"YouTube search API error: {e}")
-        return []
+        return all_items 
 
 
 def fetch_video_stats(video_ids: list[str]) -> list[dict]:

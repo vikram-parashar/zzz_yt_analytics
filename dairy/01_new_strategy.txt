@@ -1,0 +1,8 @@
+using relevance for youtube search is bad bad for idempotency and historically unstable
+started analytics, data was disappointing
+now rebuilding new data collection strategy
+categoryId=20 # gaming
+relevanceLanguage=en
+order by date and filter manually later by adding score for relevant word and decrease score for irrelvant words
+from 2024-01-01 till now
+then daily pipeline
