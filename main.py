@@ -21,6 +21,7 @@ import time
 import pendulum
 from pathlib import Path
 import shutil
+from src.scoring import load_scoring_config, score_existing_videos, score_videos
 from src.utils import DB_PATH, get_logger, get_db, chunk_list
 from src.youtube import (
     search_videos,
@@ -47,6 +48,7 @@ from src.agents import scrape_and_load
 from src.matching import match_videos_to_agents
 
 logger = get_logger("main")
+config = load_scoring_config()
 
 BACKFILL_TOPIC = "Zenless Zone Zero"
 BACKFILL_START_DATE = "2024-01-01"
@@ -153,7 +155,8 @@ def _run_backfill():
 
             if items:
                 df = _video_search_to_df(items)
-                relevant_df = df
+                df = score_videos(df, config)
+                relevant_df = df[df["is_relevant"]].copy()
                 insert_discovered_videos(con, relevant_df)
 
                 n_new = len(relevant_df)
@@ -231,7 +234,8 @@ def _run_daily_discover():
 
             if items:
                 df = _video_search_to_df(items)
-                relevant_df = df
+                df = score_videos(df, config)
+                relevant_df = df[df["is_relevant"]].copy()
                 insert_discovered_videos(con, relevant_df)
                 total_new += len(relevant_df)
                 logger.info(
@@ -274,12 +278,18 @@ def enrich_channels():
 
     logger.info("Channel enrichment complete")
 
+def score_cmd():
+    """Re-score all unscored videos in the warehouse."""
+    with get_db() as con:
+        count = score_existing_videos(con)
+    logger.info(f"Scored {count} videos")
 
 def status():
     """Show current pipeline status."""
     backfill_done = get_pipeline_info("backfill_completed", "false") == "true"
     last_day = get_pipeline_info("last_processed_day")
 
+    n_videos = n_relevant = n_channels = n_agents = 0
     with get_db() as con:
         try:
             n_videos = con.execute("SELECT COUNT(*) FROM dim_video").fetchone()[0]
@@ -347,6 +357,7 @@ COMMANDS = {
     "match": run_tracked("match")(match_videos_to_agents),
     "status": status,
     "publish": publish,
+    "score": run_tracked("score")(score_cmd),
 }
 
 

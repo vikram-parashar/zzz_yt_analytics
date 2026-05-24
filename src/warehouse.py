@@ -329,8 +329,8 @@ def upsert_video_details(con, df: pd.DataFrame):
     con.execute(
         """
         INSERT OR REPLACE INTO fact_video_daily
-            (video_id, snapshot_date, view_count, like_count, comment_count, ingested_at)
-        SELECT video_id, ?, view_count, like_count, comment_count, ?
+            (video_id, snapshot_date, view_count, like_count, comment_count,relevance_score,is_relevant, ingested_at)
+        SELECT video_id, ?, view_count, like_count, relevance_score,is_relevant,comment_count, ?
         FROM tmp
         """,
         [now.to_date_string(), now.to_datetime_string()],
