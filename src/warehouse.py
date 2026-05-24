@@ -36,6 +36,8 @@ TABLE_DDL = {
             thumbnail VARCHAR,
             tags VARCHAR[],
             duration_seconds INT,
+            relevance_score REAL DEFAULT 0.0,
+            is_relevant BOOLEAN DEFAULT false,
             ingested_date DATE
         )
     """,
@@ -103,6 +105,12 @@ TABLE_DDL = {
             error        VARCHAR
         )
     """,
+    "pipeline_info": """
+        CREATE TABLE IF NOT EXISTS pipeline_info (
+            key   VARCHAR PRIMARY KEY,
+            value VARCHAR
+        )
+    """,
 }
 
 
@@ -111,6 +119,30 @@ def init_tables():
         for name, ddl in TABLE_DDL.items():
             con.execute(ddl)
             logger.info(f"Ensured table exists: {name}")
+
+
+def get_pipeline_info(key: str, default: str | None = None) -> str | None:
+    with get_db() as con:
+        try:
+            result = con.execute(
+                "SELECT value FROM pipeline_info WHERE key = ?", [key]
+            ).fetchone()
+            return result[0] if result else default
+        except Exception:
+            logger.debug(f"pipeline_info read failed for key={key}")
+            return default
+
+
+def set_pipeline_info(key: str, value: str):
+    with get_db() as con:
+        con.execute(
+            """
+            INSERT INTO pipeline_info (key, value) VALUES (?, ?)
+            ON CONFLICT (key) DO UPDATE SET value = excluded.value
+            """,
+            [key, value],
+        )
+    logger.info(f"pipeline_info | {key} = {value}")
 
 
 def start_pipeline_run(pipeline: str) -> int:
@@ -227,8 +259,6 @@ def _video_stats_to_df(items: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-
-
 def _channel_stats_to_df(items: list[dict]) -> pd.DataFrame:
     records = []
     for item in items:
@@ -251,8 +281,6 @@ def _channel_stats_to_df(items: list[dict]) -> pd.DataFrame:
             logger.warning("Skipping channel stats item with missing keys")
             continue
     return pd.DataFrame(records)
-
-
 
 
 def insert_discovered_videos(con, df: pd.DataFrame):
@@ -344,6 +372,16 @@ def get_video_ids(con) -> list[str]:
         return []
 
 
+def get_all_channel_ids(con) -> list[str]:
+    """Get ALL channel IDs (not just ones needing enrichment)."""
+    try:
+        df = con.sql("SELECT channel_id FROM dim_channel").to_df()
+        return list(df["channel_id"])
+    except Exception:
+        logger.exception("Failed to fetch channel IDs")
+        return []
+
+
 def get_channel_ids_needing_enrichment(con) -> list[str]:
     try:
         df = con.sql(
@@ -361,3 +399,17 @@ def get_agent_names(con) -> list[str]:
     except Exception:
         logger.warning("Agent table unavailable")
         return []
+
+
+def update_video_scores(con, scored_df: pd.DataFrame):
+    """Update relevance_score and is_relevant for videos based on scoring."""
+    if scored_df.empty:
+        return
+    con.register("score_tmp", scored_df)
+    con.execute("""
+        UPDATE dim_video AS v
+        SET relevance_score = s.relevance_score,
+            is_relevant = s.is_relevant
+        FROM score_tmp AS s
+        WHERE v.video_id = s.video_id
+    """)

@@ -25,48 +25,71 @@ def _get_client():
 
 def search_videos(
     query: str,
-    max_results: int = 50,
-    published_after: str | None = None,
-    published_before: str | None = None,
-    max_pages: int = 10,
-) -> list[dict]:
-    all_items: list[dict] = []
-    page_token: str | None = None
-    pages_fetched = 0
-
+    published_after: str,
+    published_before: str,
+    page_token: str | None = None,
+) -> tuple[list[dict], str | None]:
+    logger.info(
+        f"Searching videos | query='{query}' "
+        f"after={published_after} | before={published_before} | "
+    )
     try:
-        while pages_fetched < max_pages:
-            request = _get_client().search().list(
-                q=query,
-                part="snippet",
-                type="video",
-                maxResults=min(max_results, 50),
-                order="date",
-                publishedAfter=published_after,
-                publishedBefore=published_before,
-                videoCategoryId=20,
-                relevanceLanguage="en",
-                pageToken=page_token,
-            )
-            res = request.execute()
-            pages_fetched += 1
+        params = {
+            "q": query,
+            "part": "snippet",
+            "type": "video",
+            "maxResults": 50,
+            "order": "date",
+            "videoCategoryId": "20",
+            "relevanceLanguage": "en",
+            "publishedBefore": published_before,
+            "publishedAfter": published_after,
+        }
+        if page_token:
+            params["pageToken"] = page_token
 
-            items = res.get("items", [])
-            all_items.extend(items)
-
-            page_token = res.get("nextPageToken")
-            if not page_token:
-                break
-
+        res = _get_client().search().list(**params).execute()
+        items = res.get("items", [])
+        next_token = res.get("nextPageToken")
         logger.info(
-            f"Found {len(all_items)} videos for '{query}' "
-            f"across {pages_fetched} page(s)"
+            f"Found {len(items)} videos for '{query}' "
+            f"(nextPageToken={'yes' if next_token else 'none'})"
         )
-        return all_items
-
+        return items, next_token
     except HttpError as e:
         logger.error(f"YouTube search API error: {e}")
-        return all_items 
+        return [], None
+
+
+def search_videos_paginated(
+    query: str,
+    max_pages: int = 1,
+    published_after: str | None = None,
+    published_before: str | None = None,
+) -> list[dict]:
+    all_items = []
+    next_token = None
+
+    for page in range(max_pages):
+        items, next_token = search_videos(
+            query=query,
+            published_after=published_after,
+            published_before=published_before,
+            page_token=next_token,
+        )
+        all_items.extend(items)
+
+        if not next_token:
+            break
+
+        logger.info(
+            f"Paginated search page {page + 1}/{max_pages}, got {len(items)} items"
+        )
+
+    logger.info(
+        f"Paginated search complete: {len(all_items)} total items across {min(page + 1, max_pages)} pages"
+    )
+    return all_items
 
 
 def fetch_video_stats(video_ids: list[str]) -> list[dict]:
