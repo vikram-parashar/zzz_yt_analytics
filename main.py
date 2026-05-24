@@ -17,6 +17,7 @@ Usage:
 """
 
 import sys
+import time
 import pendulum
 from pathlib import Path
 import shutil
@@ -50,6 +51,8 @@ logger = get_logger("main")
 BACKFILL_TOPIC = "Zenless Zone Zero"
 BACKFILL_START_DATE = "2024-01-01"
 BACKFILL_MAX_SEARCHES = 40
+
+SEARCH_DELAY_SECONDS = 2.0
 
 
 def run_tracked(pipeline_name: str):
@@ -86,11 +89,12 @@ def setup():
 
 def backfill():
     """
-    data from 2024-01-01 to yesterday.
+    Backfill data from 2024-01-01 to yesterday.
     Each search covers a 24hr window with max 50 results.
     Runs up to 40 searches per run (40 × 100 = 4000 quota units).
-    Pipeline state is tracked in pipeline_info
-    If backfill is already completed, then skip
+    Pipeline state is tracked in pipeline_info.
+    If backfill is already completed, then skip.
+    Includes throttling to respect YouTube API per-minute rate limits.
     """
     if get_pipeline_info("backfill_completed", "false") == "true":
         logger.info("Backfill already completed — skipping")
@@ -121,8 +125,8 @@ def _run_backfill():
     with get_db() as con:
         while searches_used < BACKFILL_MAX_SEARCHES:
             if current_date > yesterday:
-                mark_backfill_completed()
-                set_last_processed_day(yesterday.to_date_string())
+                set_pipeline_info("backfill_completed", "true")
+                set_pipeline_info("last_processed_day", yesterday.to_date_string())
 
                 logger.info(
                     f"Backfill COMPLETE! Reached yesterday "
@@ -134,6 +138,12 @@ def _run_backfill():
             day_start = current_date.start_of("day")
             day_end = current_date.add(days=1).start_of("day")
 
+            if searches_used > 0:
+                logger.debug(
+                    f"Throttling: waiting {SEARCH_DELAY_SECONDS}s before next search"
+                )
+                time.sleep(SEARCH_DELAY_SECONDS)
+
             items, nextToken = search_videos(
                 query=BACKFILL_TOPIC,
                 published_after=day_start.to_rfc3339_string(),
@@ -143,10 +153,7 @@ def _run_backfill():
 
             if items:
                 df = _video_search_to_df(items)
-
-
                 relevant_df = df
-
                 insert_discovered_videos(con, relevant_df)
 
                 n_new = len(relevant_df)
@@ -154,7 +161,7 @@ def _run_backfill():
 
                 logger.info(
                     f"[{current_date.to_date_string()}] "
-                    f"Found {len(items)} raw → {len(relevant_df)} relevant videos "
+                    f"Found {len(items)} raw -> {len(relevant_df)} relevant videos "
                     f"(searches: {searches_used}/{BACKFILL_MAX_SEARCHES})"
                 )
             else:
@@ -164,7 +171,7 @@ def _run_backfill():
                     f"(searches: {searches_used}/{BACKFILL_MAX_SEARCHES})"
                 )
 
-            set_pipeline_info("last_processed_day", current_date.to_rfc3339_string())
+            set_pipeline_info("last_processed_day", current_date.to_date_string())
             current_date = current_date.add(days=1)
 
         logger.info(
@@ -213,7 +220,10 @@ def _run_daily_discover():
             window_start = day_start.add(hours=12 * window_idx)
             window_end = day_start.add(hours=12 * (window_idx + 1))
 
-            items = search_videos(
+            if window_idx > 0:
+                time.sleep(SEARCH_DELAY_SECONDS)
+
+            items, _ = search_videos(
                 query=BACKFILL_TOPIC,
                 published_after=window_start.to_rfc3339_string(),
                 published_before=window_end.to_rfc3339_string(),
@@ -221,13 +231,12 @@ def _run_daily_discover():
 
             if items:
                 df = _video_search_to_df(items)
-                df = score_videos(df, config)
-                relevant_df = df[df["is_relevant"]].copy()
+                relevant_df = df
                 insert_discovered_videos(con, relevant_df)
                 total_new += len(relevant_df)
                 logger.info(
                     f"[Yesterday window {window_idx + 1}] "
-                    f"Found {len(items)} raw → {len(relevant_df)} relevant"
+                    f"Found {len(items)} raw -> {len(relevant_df)} relevant"
                 )
             else:
                 logger.info(f"[Yesterday window {window_idx + 1}] No videos found")
@@ -268,6 +277,9 @@ def enrich_channels():
 
 def status():
     """Show current pipeline status."""
+    backfill_done = get_pipeline_info("backfill_completed", "false") == "true"
+    last_day = get_pipeline_info("last_processed_day")
+
     with get_db() as con:
         try:
             n_videos = con.execute("SELECT COUNT(*) FROM dim_video").fetchone()[0]
@@ -278,9 +290,6 @@ def status():
             n_agents = con.execute("SELECT COUNT(*) FROM dim_agent").fetchone()[0]
         except Exception:
             n_videos = n_relevant = n_channels = n_agents = 0
-
-    backfill_done = is_backfill_completed()
-    last_day = get_last_processed_day()
 
     print("\n" + "=" * 50)
     print("  PIPELINE STATUS")
@@ -294,7 +303,7 @@ def status():
         yesterday = pendulum.yesterday().to_date_string()
         remaining = (pendulum.parse(yesterday) - pendulum.parse(last_day)).days
         print(f"  Days remaining: ~{remaining}")
-        runs_needed = remaining * 2 / BACKFILL_MAX_SEARCHES
+        runs_needed = remaining / (BACKFILL_MAX_SEARCHES)
         print(f"  Backfill runs:  ~{runs_needed:.0f} more runs needed")
     print("=" * 50 + "\n")
 
@@ -322,9 +331,9 @@ def publish():
 
     db_size_mb = DB_PATH.stat().st_size / (1024 * 1024)
     logger.info(
-        f"Published warehouse snapshot → {versioned.name} ({db_size_mb:.1f} MB)"
+        f"Published warehouse snapshot -> {versioned.name} ({db_size_mb:.1f} MB)"
     )
-    logger.info("Published latest copy → latest.db")
+    logger.info("Published latest copy -> latest.db")
 
 
 COMMANDS = {
