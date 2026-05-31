@@ -1,11 +1,12 @@
+import re
+import math
 import pandas as pd
 from tqdm import tqdm
 
 from src.utils import get_logger, get_db
 
 logger = get_logger(__name__)
-import re
-import math
+
 
 def _word_boundary_match(text: str, term: str) -> bool:
     if any("\u4e00" <= c <= "\u9fff" for c in term):
@@ -82,58 +83,66 @@ def _compute_confidence(
     return scores
 
 
+def _match_inner(con):
+    """Core matching logic — runs inside a db connection context."""
+    aliases = con.sql("SELECT * FROM bridge_agent_alias").df()
+    videos = con.sql(
+        "SELECT video_id, title, description, tags FROM dim_video"
+    ).df()
+
+    logger.info(f"Matching {len(videos)} videos against {len(aliases)} aliases")
+
+    results = []
+    for _, video in tqdm(videos.iterrows(), total=len(videos), desc="Matching"):
+        scores = _compute_confidence(video, aliases)
+        for agent, confidence in scores.items():
+            if confidence > 0:
+                results.append(
+                    {
+                        "video_id": video["video_id"],
+                        "agent_name": agent,
+                        "confidence": confidence,
+                    }
+                )
+
+    if results:
+        df = pd.DataFrame(results)
+        con.register("match_tmp", df)
+        con.execute("""
+            INSERT INTO bridge_video_agent (video_id, agent_name, confidence)
+            SELECT video_id, agent_name, confidence
+            FROM match_tmp
+            ON CONFLICT (video_id, agent_name) DO UPDATE SET
+                confidence = excluded.confidence
+        """)
+        logger.info(f"Wrote {len(results)} video-agent associations")
+    else:
+        logger.info("No video-agent matches found")
+
+    con.execute("""
+        DELETE FROM bridge_video_agent
+        WHERE agent_name = 'Billy'
+          AND video_id IN (
+              SELECT video_id FROM bridge_video_agent WHERE agent_name = 'Billy - Starlight'
+          )
+    """)
+    con.execute("""
+        DELETE FROM bridge_video_agent
+        WHERE agent_name = 'Anby'
+          AND video_id IN (
+              SELECT video_id FROM bridge_video_agent WHERE agent_name = 'Anby: Soldier 0'
+          )
+    """)
+
+
 def match_videos_to_agents(con=None):
-    should_close = False
-    if con is None:
-        con_cm = get_db()
-        con = con_cm.__enter__()
-        should_close = True
+    """Match videos to agents using alias-based scoring.
 
-    try:
-        aliases = con.sql("SELECT * FROM bridge_agent_alias").df()
-        videos = con.sql(
-            "SELECT video_id, title, description, tags FROM dim_video"
-        ).df()
-
-        logger.info(f"Matching {len(videos)} videos against {len(aliases)} aliases")
-
-        results = []
-        for _, video in tqdm(videos.iterrows(), total=len(videos), desc="Matching"):
-            scores = _compute_confidence(video, aliases)
-            for agent, confidence in scores.items():
-                if confidence > 0:
-                    results.append(
-                        {
-                            "video_id": video["video_id"],
-                            "agent_name": agent,
-                            "confidence": confidence,
-                        }
-                    )
-
-        if results:
-            df = pd.DataFrame(results)
-            con.register("match_tmp", df)
-            con.execute("""
-                INSERT INTO bridge_video_agent (video_id, agent_name, confidence)
-                SELECT video_id, agent_name, confidence
-                FROM match_tmp
-                ON CONFLICT (video_id, agent_name) DO NOTHING
-            """)
-            logger.info(f"Wrote {len(results)} video-agent associations")
-        else:
-            logger.info("No video-agent matches found")
-
-        con.execute("""
-            delete from bridge_video_agent
-            where agent_name='Billy' and
-            video_id in (select video_id from bridge_video_agent where agent_name='Billy - Starlight')
-        """)
-        con.execute("""
-            delete from bridge_video_agent
-            where agent_name='Anby' and
-            video_id in (select video_id from bridge_video_agent where agent_name='Anby: Soldier 0')
-        """)
-
-    finally:
-        if should_close:
-            con_cm.__exit__(None, None, None)
+    If a connection is provided, uses it directly. Otherwise opens its own
+    connection using the context manager properly.
+    """
+    if con is not None:
+        _match_inner(con)
+    else:
+        with get_db() as con:
+            _match_inner(con)

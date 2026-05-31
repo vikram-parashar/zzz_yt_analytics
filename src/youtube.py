@@ -58,7 +58,6 @@ def search_videos(
         "type": "video",
         "maxResults": 50,
         "order": "date",
-        "videoCategoryId": "20",
         "relevanceLanguage": "en",
         "publishedBefore": published_before,
         "publishedAfter": published_after,

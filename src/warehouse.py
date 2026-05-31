@@ -283,18 +283,20 @@ def _channel_stats_to_df(items: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
+
+
 def insert_discovered_videos(con, df: pd.DataFrame):
     if df.empty:
         return
 
     today = pendulum.now().to_date_string()
-    con.register("tmp", df)
+    con.register("tmp_video_search", df)
 
     con.execute(
         """
         INSERT INTO dim_video (video_id, title, description, channel_id, published_at, ingested_date)
         SELECT video_id, title, description, channel_id, published_at, ?
-        FROM tmp
+        FROM tmp_video_search
         ON CONFLICT (video_id) DO NOTHING
         """,
         [today],
@@ -303,7 +305,7 @@ def insert_discovered_videos(con, df: pd.DataFrame):
         """
         INSERT INTO dim_channel (channel_id, channel_name, ingested_date)
         SELECT channel_id, channel_title, ?
-        FROM tmp
+        FROM tmp_video_search
         ON CONFLICT (channel_id) DO NOTHING
         """,
         [today],
@@ -314,14 +316,14 @@ def upsert_video_details(con, df: pd.DataFrame):
     if df.empty:
         return
 
-    con.register("tmp", df)
+    con.register("tmp_video_stats", df)
 
     con.execute("""
         UPDATE dim_video AS v
         SET duration_seconds = t.duration_seconds,
             tags = t.tags,
             thumbnail = t.thumbnail
-        FROM tmp AS t
+        FROM tmp_video_stats AS t
         WHERE v.video_id = t.video_id
     """)
 
@@ -329,9 +331,9 @@ def upsert_video_details(con, df: pd.DataFrame):
     con.execute(
         """
         INSERT OR REPLACE INTO fact_video_daily
-            (video_id, snapshot_date, view_count, like_count, comment_count,relevance_score,is_relevant, ingested_at)
-        SELECT video_id, ?, view_count, like_count, relevance_score,is_relevant,comment_count, ?
-        FROM tmp
+            (video_id, snapshot_date, view_count, like_count, comment_count, ingested_at)
+        SELECT video_id, ?, view_count, like_count, comment_count, ?
+        FROM tmp_video_stats
         """,
         [now.to_date_string(), now.to_datetime_string()],
     )
@@ -341,13 +343,13 @@ def upsert_channel_details(con, df: pd.DataFrame):
     if df.empty:
         return
 
-    con.register("tmp", df)
+    con.register("tmp_channel_stats", df)
 
     con.execute("""
         UPDATE dim_channel AS c
         SET country = t.country,
             thumbnail = t.thumbnail
-        FROM tmp AS t
+        FROM tmp_channel_stats AS t
         WHERE c.channel_id = t.channel_id
     """)
 
@@ -357,10 +359,12 @@ def upsert_channel_details(con, df: pd.DataFrame):
         INSERT OR REPLACE INTO fact_channel_daily
             (channel_id, snapshot_date, subscriber_count, view_count, video_count, ingested_at)
         SELECT channel_id, ?, subscriber_count, view_count, video_count, ?
-        FROM tmp
+        FROM tmp_channel_stats
         """,
         [now.to_date_string(), now.to_datetime_string()],
     )
+
+
 
 
 def get_video_ids(con) -> list[str]:
@@ -373,20 +377,9 @@ def get_video_ids(con) -> list[str]:
 
 
 def get_all_channel_ids(con) -> list[str]:
-    """Get ALL channel IDs (not just ones needing enrichment)."""
+    """Get ALL channel IDs for daily fact snapshots."""
     try:
         df = con.sql("SELECT channel_id FROM dim_channel").to_df()
-        return list(df["channel_id"])
-    except Exception:
-        logger.exception("Failed to fetch channel IDs")
-        return []
-
-
-def get_channel_ids_needing_enrichment(con) -> list[str]:
-    try:
-        df = con.sql(
-            "SELECT channel_id FROM dim_channel WHERE thumbnail IS NULL"
-        ).to_df()
         return list(df["channel_id"])
     except Exception:
         logger.exception("Failed to fetch channel IDs")

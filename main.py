@@ -1,21 +1,20 @@
 """
 Usage:
     uv run main.py setup              First-time warehouse setup
-    uv run main.py daily              Daily incremental pipeline
+    uv run main.py daily              Daily incremental pipeline (includes match)
     uv run main.py backfill           Backfill pipeline: 40 searches/day from 2024-01-01
     uv run main.py init-tables        Create DuckDB tables only
     uv run main.py scrape-agents      Scrape agent data from wiki
-    uv run main.py discover           Single-day video discovery (legacy)
-    uv run main.py initial-discover   Full initial video discovery (legacy)
     uv run main.py enrich-videos      Enrich video metadata
     uv run main.py enrich-channels    Enrich channel metadata
     uv run main.py score              Score all unscored videos
     uv run main.py match              Build video-agent associations
     uv run main.py query <sql>        Run SQL queries in the warehouse
-    uv run main.py publish            Copy versioned warehouse
+    uv run main.py publish            Checkpoint + copy versioned warehouse
     uv run main.py status             Show pipeline status
 """
 
+import functools
 import sys
 import time
 import pendulum
@@ -61,6 +60,7 @@ def run_tracked(pipeline_name: str):
     """Decorator that wraps a pipeline function with pipeline_runs tracking."""
 
     def decorator(fn):
+        @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             run_id = start_pipeline_run(pipeline_name)
             try:
@@ -71,14 +71,13 @@ def run_tracked(pipeline_name: str):
                 finish_pipeline_run(run_id, error=str(e))
                 raise
 
-        wrapper.__name__ = fn.__name__
-        wrapper.__doc__ = fn.__doc__
         return wrapper
 
     return decorator
 
 
 def setup():
+    """One-time setup: init tables + scrape agents."""
     logger.info("=" * 50)
     logger.info("SETUP PIPELINE")
     logger.info("=" * 50)
@@ -97,6 +96,7 @@ def backfill():
     Pipeline state is tracked in pipeline_info.
     If backfill is already completed, then skip.
     Includes throttling to respect YouTube API per-minute rate limits.
+    After discovery, enriches all newly discovered videos and channels.
     """
     if get_pipeline_info("backfill_completed", "false") == "true":
         logger.info("Backfill already completed — skipping")
@@ -105,6 +105,9 @@ def backfill():
     run_id = start_pipeline_run("backfill")
     try:
         _run_backfill()
+        enrich_videos()
+        enrich_channels()
+        match_videos_to_agents()
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -185,6 +188,10 @@ def _run_backfill():
 
 
 def daily():
+    """Daily pipeline: scrape agents → discover → enrich → match.
+
+    Idempotent — skips if a successful 'daily' run already exists for today.
+    """
     if did_pipeline_run_today("daily"):
         logger.info("Daily pipeline already ran today — skipping")
         return
@@ -192,7 +199,7 @@ def daily():
     if get_pipeline_info("backfill_completed", "false") == "false":
         logger.warning(
             "Backfill is not yet completed. Run 'backfill' command first. "
-            "Falling back to daily discovery for today only."
+            "Daily discovery will proceed for today only."
         )
 
     logger.info("=" * 50)
@@ -201,9 +208,11 @@ def daily():
 
     run_id = start_pipeline_run("daily")
     try:
+        scrape_and_load()
         _run_daily_discover()
         enrich_videos()
         enrich_channels()
+        match_videos_to_agents()
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -265,6 +274,7 @@ def enrich_videos():
 
 
 def enrich_channels():
+    """Fetch channel details and daily stats for ALL known channels."""
     with get_db() as con:
         ids = get_all_channel_ids(con)
         if not ids:
@@ -278,11 +288,13 @@ def enrich_channels():
 
     logger.info("Channel enrichment complete")
 
+
 def score_cmd():
     """Re-score all unscored videos in the warehouse."""
     with get_db() as con:
         count = score_existing_videos(con)
     logger.info(f"Scored {count} videos")
+
 
 def status():
     """Show current pipeline status."""
@@ -313,7 +325,7 @@ def status():
         yesterday = pendulum.yesterday().to_date_string()
         remaining = (pendulum.parse(yesterday) - pendulum.parse(last_day)).days
         print(f"  Days remaining: ~{remaining}")
-        runs_needed = remaining / (BACKFILL_MAX_SEARCHES)
+        runs_needed = remaining / BACKFILL_MAX_SEARCHES
         print(f"  Backfill runs:  ~{runs_needed:.0f} more runs needed")
     print("=" * 50 + "\n")
 
@@ -325,13 +337,21 @@ def query(sql: str):
 
 
 def publish():
+    """Checkpoint WAL, then copy versioned warehouse snapshot."""
+    import duckdb
+
+    if DB_PATH.exists():
+        con = duckdb.connect(str(DB_PATH))
+        con.execute("CHECKPOINT")
+        con.close()
+        logger.info("DuckDB WAL checkpointed")
+    else:
+        raise FileNotFoundError("warehouse.db not found — nothing to publish")
+
     ts = pendulum.now("UTC").format("YYYY-MM-DDTHH-mm-ss[Z]")
 
     out_dir = Path("artifacts/warehouse")
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    if not DB_PATH.exists():
-        raise FileNotFoundError("warehouse.db not found after pipeline run")
 
     versioned = out_dir / f"warehouse_{ts}.db"
     latest = out_dir / "latest.db"

@@ -30,22 +30,9 @@ def get_logger(name: str = "pipeline") -> logging.Logger:
     return logger
 
 
-def bootstrap_from_seed():
-    if DB_PATH.exists():
-        return False
-
-    if not SEED_PATH.exists():
-        return False
-
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    import shutil
-
-    shutil.copy2(SEED_PATH, DB_PATH)
-    return True
-
-
 @contextmanager
 def get_db():
+    """Open a DuckDB connection, bootstrapping from seed if needed."""
     if not DB_PATH.exists() and SEED_PATH.exists():
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         import shutil

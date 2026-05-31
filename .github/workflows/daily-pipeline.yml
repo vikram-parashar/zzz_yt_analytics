@@ -55,11 +55,17 @@ jobs:
       - name: Install local modules
         run: uv pip install -e .
 
+      # Backfill runs first — it's a no-op if already completed.
+      # When in progress, it picks up where it left off (40 searches/run).
+      # NOTE: Running backfill + daily together may consume ~5000 quota units.
+      #       Monitor usage at https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas
+      - name: Run backfill (no-op if already completed)
+        run: uv run python main.py backfill
+
+      # Daily pipeline now includes scrape-agents + match internally,
+      # so match is tracked as part of the daily run — no separate step.
       - name: Run daily pipeline
         run: uv run python main.py daily
-
-      - name: Run video-agent matching
-        run: uv run python main.py match
 
       - name: Build versioned warehouse snapshot
         run: uv run python main.py publish
