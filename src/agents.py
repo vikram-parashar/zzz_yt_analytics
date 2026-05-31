@@ -1,10 +1,8 @@
 import time
-import hashlib
 import json
 from pathlib import Path
 
 import pandas as pd
-import pendulum
 import requests
 from bs4 import BeautifulSoup
 
@@ -16,8 +14,10 @@ logger = get_logger(__name__)
 WIKI_URL = "https://www.prydwen.gg/zenless/characters"
 WIKI_BASE_URL = "https://www.prydwen.gg"
 
-RAW_DIR = Path(WORK_DIR) / "data" / "raw"
 ALIASES_PATH = Path(WORK_DIR) / "data" / "aliases.json"
+
+HTTP_MAX_RETRIES = 3
+HTTP_RETRY_DELAY = 5
 
 
 def _make_session() -> requests.Session:
@@ -33,18 +33,52 @@ def _make_session() -> requests.Session:
     return session
 
 
-def scrape_wiki(session: requests.Session) -> str:
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
+def _fetch_with_retry(
+    session: requests.Session, url: str, max_retries: int = HTTP_MAX_RETRIES
+) -> requests.Response:
+    for attempt in range(max_retries + 1):
+        try:
+            resp = session.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status and 400 <= status < 500 and status != 429:
+                raise
+            if attempt < max_retries:
+                delay = HTTP_RETRY_DELAY * (2**attempt)
+                logger.warning(
+                    "HTTP %s on attempt %d/%d for %s — retrying in %ds",
+                    status,
+                    attempt + 1,
+                    max_retries + 1,
+                    url,
+                    delay,
+                )
+                time.sleep(delay)
+            else:
+                raise
+        except requests.exceptions.ConnectionError:
+            if attempt < max_retries:
+                delay = HTTP_RETRY_DELAY * (2**attempt)
+                logger.warning(
+                    "Connection error on attempt %d/%d for %s — retrying in %ds",
+                    attempt + 1,
+                    max_retries + 1,
+                    url,
+                    delay,
+                )
+                time.sleep(delay)
+            else:
+                raise
 
+
+def scrape_wiki(session: requests.Session) -> str:
+    """Scrape the character listing page. Returns raw HTML."""
     logger.info("scrape.start url=%s", WIKI_URL)
     start = time.perf_counter()
 
-    try:
-        resp = session.get(WIKI_URL, timeout=30)
-        resp.raise_for_status()
-    except Exception:
-        logger.exception("scrape.http_failed url=%s", WIKI_URL)
-        raise
+    resp = _fetch_with_retry(session, WIKI_URL)
 
     html = resp.text
     elapsed = time.perf_counter() - start
@@ -56,36 +90,35 @@ def scrape_wiki(session: requests.Session) -> str:
         elapsed,
     )
 
-    new_hash = hashlib.md5(html.encode()).hexdigest()
-    latest_path = RAW_DIR / "agents_latest.html"
-
-    old_hash = (
-        hashlib.md5(latest_path.read_bytes()).hexdigest()
-        if latest_path.exists()
-        else None
-    )
-
-    if new_hash == old_hash:
-        logger.info("scrape.no_change hash=%s", new_hash)
-        return html
-
-    run_date = pendulum.now("UTC").to_datetime_string()
-
-    latest_path.write_text(html, encoding="utf-8")
-    snapshot_path = RAW_DIR / f"agents_{run_date}.html"
-    snapshot_path.write_text(html, encoding="utf-8")
-
-    logger.info(
-        "scrape.saved_snapshot hash=%s snapshot=%s latest=%s",
-        new_hash,
-        snapshot_path.name,
-        latest_path.name,
-    )
-
     return html
 
 
-def parse_agents(soup: BeautifulSoup) -> list[dict]:
+def _parse_faction_from_detail(
+    session: requests.Session, detail_url: str
+) -> str | None:
+    try:
+        resp = _fetch_with_retry(session, detail_url)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        intro = soup.find(class_="character-intro")
+        if not intro:
+            return None
+
+        combined = intro.find(class_="combined")
+        if combined:
+            strong_tags = combined.find_all("strong")
+            if strong_tags:
+                return strong_tags[-1].get_text(strip=True)
+
+        logger.debug("No faction <strong> found at %s", detail_url)
+        return None
+
+    except Exception:
+        logger.exception("faction_scrape.failed url=%s", detail_url)
+        return None
+
+
+def parse_agents(soup: BeautifulSoup, session: requests.Session) -> list[dict]:
     logger.info("parse.start")
 
     cards = soup.find_all(class_="avatar-card")
@@ -104,8 +137,15 @@ def parse_agents(soup: BeautifulSoup) -> list[dict]:
             emp_name = card.find(class_="emp-name")
             data["name"] = emp_name.get_text().strip() if emp_name else None
 
+            link = card.find("a")
+            data["href"] = (
+                (WIKI_BASE_URL + str(link["href"]))
+                if link and link.get("href")
+                else None
+            )
+
             img = card.find("img", alt=lambda x: x and x == data["name"])
-            data["img"] = str(img["src"]) if img else None
+            data["img"] = img["src"]
 
             element_div = card.find(class_="element")
             element = (
@@ -113,7 +153,7 @@ def parse_agents(soup: BeautifulSoup) -> list[dict]:
                 if element_div
                 else None
             )
-            data["attribute"] = element["alt"].split()[-2] if element else None
+            data["attribute"] = element["alt"] if element else None
 
             class_div = card.find(class_="class")
             clas = (
@@ -121,16 +161,28 @@ def parse_agents(soup: BeautifulSoup) -> list[dict]:
                 if class_div
                 else None
             )
-            data["speciality"] = clas["alt"].split()[-2] if clas else None
+            data["speciality"] = clas["alt"] if clas else None
+
+            data["faction"] = None
+            if data["href"]:
+                data["faction"] = _parse_faction_from_detail(session, data["href"])
+                logger.debug(
+                    "faction_scrape name=%s faction=%s",
+                    data["name"],
+                    data["faction"],
+                )
+                time.sleep(0.5)
 
             agents.append(data)
 
         except Exception:
             logger.exception("parse.card_failed index=%d", i)
 
+    n_with_faction = sum(1 for a in agents if a.get("faction"))
     logger.info(
-        "parse.done parsed=%d success_rate=%.2f",
+        "parse.done parsed=%d with_faction=%d success_rate=%.2f",
         len(agents),
+        n_with_faction,
         len(agents) / len(cards) if cards else 0,
     )
 
@@ -141,21 +193,25 @@ def upsert_agent(con, agents: list[dict]):
     logger.info("db.agent_upsert.start rows=%d", len(agents))
 
     df = pd.DataFrame(agents)
+    if "href" in df.columns:
+        df = df.drop(columns=["href"])
+
     con.register("agent_tmp", df)
 
     try:
         con.execute("""
             INSERT INTO dim_agent (
-                name, img, rank, attribute, speciality
+                name, img, rank, attribute, speciality, faction
             )
-            SELECT name, img, rank, attribute, speciality
+            SELECT name, img, rank, attribute, speciality, faction
             FROM agent_tmp
             ON CONFLICT(name)
             DO UPDATE SET
                 img = excluded.img,
                 rank = excluded.rank,
                 attribute = excluded.attribute,
-                speciality = excluded.speciality
+                speciality = excluded.speciality,
+                faction = excluded.faction
         """)
     except Exception:
         logger.exception("db.agent_upsert.failed")
@@ -206,9 +262,8 @@ def scrape_and_load():
 
         html = scrape_wiki(session)
 
-
         soup = BeautifulSoup(html, "html.parser")
-        agents = parse_agents(soup=soup)
+        agents = parse_agents(soup=soup, session=session)
 
         if not agents:
             logger.warning("agents.no_agents_parsed")
