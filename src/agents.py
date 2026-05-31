@@ -105,7 +105,7 @@ def parse_agents(soup: BeautifulSoup) -> list[dict]:
             data["name"] = emp_name.get_text().strip() if emp_name else None
 
             img = card.find("img", alt=lambda x: x and x == data["name"])
-            data["img"] = (WIKI_BASE_URL + str(img["data-src"])) if img else None
+            data["img"] = str(img["src"]) if img else None
 
             element_div = card.find(class_="element")
             element = (
@@ -113,7 +113,7 @@ def parse_agents(soup: BeautifulSoup) -> list[dict]:
                 if element_div
                 else None
             )
-            data["attribute"] = element["alt"] if element else None
+            data["attribute"] = element["alt"].split()[-2] if element else None
 
             class_div = card.find(class_="class")
             clas = (
@@ -121,7 +121,7 @@ def parse_agents(soup: BeautifulSoup) -> list[dict]:
                 if class_div
                 else None
             )
-            data["speciality"] = clas["alt"] if clas else None
+            data["speciality"] = clas["alt"].split()[-2] if clas else None
 
             agents.append(data)
 
