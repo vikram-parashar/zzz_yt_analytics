@@ -3,6 +3,7 @@ import re
 import time
 
 import pandas as pd
+import pendulum
 import requests
 from bs4 import BeautifulSoup
 
@@ -207,6 +208,94 @@ def _clean_agent_name(raw_name: str) -> str:
     return name.strip()
 
 
+def parse_banner_schedule(soup: BeautifulSoup) -> list[dict]:
+    h3 = soup.find(
+        lambda tag: tag.name == "h3" and "Banner Schedule" in tag.get_text(strip=True)
+    )
+
+    if not h3:
+        logger.warning("banner_schedule: h3 not found")
+        return []
+
+    ul = h3.find_next("ul")
+    if not ul:
+        logger.warning("banner_schedule: ul not found")
+        return []
+
+    banners = []
+
+    for li in ul.find_all("li", recursive=False):
+        text = li.get_text(" ", strip=True)
+
+        lower = text.lower()
+        if any(keyword in lower for keyword in ("bangboo", "standard", "engine")):
+            continue
+
+        link = li.find("a")
+        if not link:
+            continue
+
+        raw_name = link.get_text(strip=True)
+        agent_name = _clean_agent_name(raw_name)
+
+        if agent_name == "Orphie":
+            agent_name = "Orphie & Magus"
+        elif agent_name == "Orphie and Magus":
+            agent_name = "Orphie & Magus"
+        elif agent_name == "Soldier 0 - Anby":
+            agent_name = "Anby: Soldier 0"
+
+        if "=" not in text:
+            continue
+
+        date_part = text.split("=", 1)[1].strip()
+
+        if date_part.lower() == "permanent":
+            continue
+
+        try:
+            start_str, end_str = [x.strip() for x in date_part.split("-", 1)]
+
+            start_date = pendulum.from_format(
+                start_str,
+                "MMMM D, YYYY",
+            ).to_date_string()
+
+            end_date = pendulum.from_format(
+                end_str,
+                "MMMM D, YYYY",
+            ).to_date_string()
+            version_link = soup.find("a", string=lambda s: s and "Version" in s)
+
+            version = None
+            if version_link:
+                version = version_link.get_text(strip=True).split()[1]
+
+        except Exception:
+            logger.warning(
+                "banner_schedule: failed to parse date for %s: %s",
+                agent_name,
+                date_part,
+            )
+            continue
+
+        banners.append(
+            {
+                "version": version,
+                "agent_name": agent_name,
+                "banner_start": start_date,
+                "banner_end": end_date,
+            }
+        )
+
+    logger.info(
+        "banner_schedule.parse.done parsed=%d",
+        len(banners),
+    )
+
+    return banners
+
+
 def parse_banners(soup: BeautifulSoup) -> list[dict]:
     target_th = soup.find(
         "th", string=lambda t: t and "All Agent and W-Engine Banners" in t
@@ -343,16 +432,23 @@ def scrape_banners():
     try:
         html = fetch_banner_page()
         soup = BeautifulSoup(html, "html.parser")
+
+        schedule_banners = parse_banner_schedule(soup)
+        if not schedule_banners:
+            logger.warning("banners.no_banners_parsed")
+            return
+
         banners = parse_banners(soup)
 
         if not banners:
             logger.warning("banners.no_banners_parsed")
             return
 
-        logger.info("banners.parsed count=%d", len(banners))
+        logger.info("banners.parsed count=%d", len(banners) + len(schedule_banners))
 
         with get_db() as con:
             upsert_banners(con, banners)
+            upsert_banners(con, schedule_banners)
 
         logger.info("banners.success")
 

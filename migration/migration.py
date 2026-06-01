@@ -1,7 +1,7 @@
 from utils import get_db
 
 
-def migration2():
+def dim_agent_update_release_date():
     with get_db() as con:
         con.execute("""
             insert into dim_agent (name,release_date) values
@@ -17,8 +17,6 @@ def migration2():
                 ('Anby','2024-7-4'),
                 ('Billy - Starlight','2026-5-27'),
                 ('Nekomata','2024-7-4'),
-                ('Norma',null),
-                ('Velina',null),
                 ('Banyue','2025-12-17'),
                 ('Zhao','2025-12-30'),
                 ('Dialyn','2025-11-26'),
@@ -51,16 +49,7 @@ def migration2():
                 ('Yidhari','2025-11-5'),
                 ('Evelyn','2025-2-12'),
                 ('Astra Yao','2025-1-22'),
-                ('Pyrois',null),
-                ('Sunbringer',null),
-                ('Remielle',null),
-                ('Sigrid',null),
-                ('Roxy',null),
-                ('Claret',null),
-                ('The Storyteller',null),
-                ('Phoenix',null),
-                ('Severian',null),
-                ('Anby: Soldier 0',null),
+                ('Anby: Soldier 0','2025-3-12'),
                 ('Corin','2024-7-4'),
                 ('Ellen','2024-7-4'),
                 ('Lycaon','2024-7-4'),
@@ -87,4 +76,16 @@ def migration3():
         """)
 
 
+def dim_patch_insert_exclusive():
+    with get_db() as con:
+        con.execute("""
+            insert into dim_patch (version,agent_name,banner_start,banner_end) values
+            ('2.5','Astra Yao','2026-1-21','2026-02-5'),
+            ('2.5','Anby: Soldier 0','2026-1-21','2026-02-5'),
+            ('2.5','Alice','2026-1-21','2026-02-5')
+        """)
+
+
+dim_agent_update_release_date()
 migration3()
+dim_patch_insert_exclusive()
