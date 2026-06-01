@@ -208,18 +208,18 @@ def _clean_agent_name(raw_name: str) -> str:
     return name.strip()
 
 
-def parse_banner_schedule(soup: BeautifulSoup) -> list[dict]:
+def parse_banner_current(soup: BeautifulSoup) -> list[dict]:
     h3 = soup.find(
         lambda tag: tag.name == "h3" and "Banner Schedule" in tag.get_text(strip=True)
     )
 
     if not h3:
-        logger.warning("banner_schedule: h3 not found")
+        logger.warning("banner_current: h3 not found")
         return []
 
     ul = h3.find_next("ul")
     if not ul:
-        logger.warning("banner_schedule: ul not found")
+        logger.warning("banner_current: ul not found")
         return []
 
     banners = []
@@ -273,7 +273,7 @@ def parse_banner_schedule(soup: BeautifulSoup) -> list[dict]:
 
         except Exception:
             logger.warning(
-                "banner_schedule: failed to parse date for %s: %s",
+                "banner_current: failed to parse date for %s: %s",
                 agent_name,
                 date_part,
             )
@@ -289,7 +289,7 @@ def parse_banner_schedule(soup: BeautifulSoup) -> list[dict]:
         )
 
     logger.info(
-        "banner_schedule.parse.done parsed=%d",
+        "banner_current.parse.done parsed=%d",
         len(banners),
     )
 
@@ -433,8 +433,8 @@ def scrape_banners():
         html = fetch_banner_page()
         soup = BeautifulSoup(html, "html.parser")
 
-        schedule_banners = parse_banner_schedule(soup)
-        if not schedule_banners:
+        current_banners = parse_banner_current(soup)
+        if not current_banners:
             logger.warning("banners.no_banners_parsed")
             return
 
@@ -444,11 +444,11 @@ def scrape_banners():
             logger.warning("banners.no_banners_parsed")
             return
 
-        logger.info("banners.parsed count=%d", len(banners) + len(schedule_banners))
+        logger.info("banners.parsed count=%d", len(banners) + len(current_banners))
 
         with get_db() as con:
             upsert_banners(con, banners)
-            upsert_banners(con, schedule_banners)
+            upsert_banners(con, current_banners)
 
         logger.info("banners.success")
 
