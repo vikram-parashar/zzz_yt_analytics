@@ -243,7 +243,9 @@ def parse_banner_current(soup: BeautifulSoup) -> list[dict]:
         elif agent_name == "Orphie and Magus":
             agent_name = "Orphie & Magus"
         elif agent_name == "Soldier 0 - Anby":
-            agent_name = "Anby: Soldier 0"
+            agent_name = "Soldier 0 Anby"
+        elif agent_name == "Jane Doe":
+            agent_name = "Jane"
 
         if "=" not in text:
             continue
@@ -363,10 +365,14 @@ def parse_banners(soup: BeautifulSoup) -> list[dict]:
             continue
         if "screening" in agent_name:
             continue
-        elif agent_name.strip() == "Orphie":
+        if agent_name == "Orphie":
             agent_name = "Orphie & Magus"
-        elif agent_name.strip() == "Soldier 0 - Anby":
-            agent_name = "Anby: Soldier 0"
+        elif agent_name == "Orphie and Magus":
+            agent_name = "Orphie & Magus"
+        elif agent_name == "Soldier 0 - Anby":
+            agent_name = "Soldier 0 Anby"
+        elif agent_name == "Jane Doe":
+            agent_name = "Jane"
 
         cell_text = agent_td.get_text(separator=" ", strip=True)
         date_range = _parse_date_range(cell_text)

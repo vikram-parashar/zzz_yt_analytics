@@ -1,5 +1,6 @@
 import time
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -11,10 +12,10 @@ from src.warehouse import get_agent_names
 
 logger = get_logger(__name__)
 
-WIKI_URL = "https://www.prydwen.gg/zenless/characters"
-WIKI_BASE_URL = "https://www.prydwen.gg"
+WIKI_URL = "https://www.lootbar.com/blog/en/zenless-zone-zero-character-list.html"
 
 ALIASES_PATH = Path(WORK_DIR) / "data" / "aliases.json"
+FALLBACK_AGENTS_PATH = Path(WORK_DIR) / "data" / "agents_fallback.json"
 
 HTTP_MAX_RETRIES = 3
 HTTP_RETRY_DELAY = 5
@@ -74,116 +75,181 @@ def _fetch_with_retry(
 
 
 def scrape_wiki(session: requests.Session) -> str:
-    """Scrape the character listing page. Returns raw HTML."""
     logger.info("scrape.start url=%s", WIKI_URL)
     start = time.perf_counter()
 
     resp = _fetch_with_retry(session, WIKI_URL)
-
-    html = resp.text
     elapsed = time.perf_counter() - start
-
     logger.info(
         "scrape.fetched status=%s bytes=%s latency=%.2fs",
         resp.status_code,
-        len(html),
+        len(resp.text),
         elapsed,
     )
+    return resp.text
 
-    return html
 
-
-def _parse_faction_from_detail(
-    session: requests.Session, detail_url: str
-) -> str | None:
-    try:
-        resp = _fetch_with_retry(session, detail_url)
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        intro = soup.find(class_="character-intro")
-        if not intro:
-            return None
-
-        combined = intro.find(class_="combined")
-        if combined:
-            strong_tags = combined.find_all("strong")
-            if strong_tags:
-                return strong_tags[-1].get_text(strip=True)
-
-        logger.debug("No faction <strong> found at %s", detail_url)
+def _parse_rarity_from_img(td) -> str | None:
+    img = td.find("img")
+    if not img:
         return None
+    alt = img.get("alt", "")
+    if "Rank-S" in alt:
+        return "S"
+    if "Rank-A" in alt:
+        return "A"
+    return None
 
-    except Exception:
-        logger.exception("faction_scrape.failed url=%s", detail_url)
-        return None
+
+def _parse_rarity_from_text(text: str) -> str | None:
+    m = re.search(r"\(([SA])-Rank\)", text)
+    return m.group(1) if m else None
 
 
-def parse_agents(soup: BeautifulSoup, session: requests.Session) -> list[dict]:
+def _clean_name(raw: str) -> str:
+    name = re.sub(r"\s*\([SA]-Rank\)", "", raw).strip()
+    name = re.sub(r"\s*-\s*", " ", name)
+    name = re.sub(r"\s+", " ", name)
+    return name
+
+
+def _parse_playable_tables(soup: BeautifulSoup) -> list[dict]:
+    agents = []
+    h2 = None
+    for tag in soup.find_all("h2"):
+        if "All Playable Characters" in tag.get_text():
+            h2 = tag
+            break
+
+    if not h2:
+        logger.warning("parse: 'All Playable Characters' h2 not found")
+        return agents
+
+    current_faction = None
+    for sibling in h2.find_next_siblings():
+        if sibling.name == "h2":
+            break
+        if sibling.name == "h3":
+            current_faction = sibling.get_text(strip=True)
+            faction_num_match = re.match(r"\d+\.\s*", current_faction)
+            if faction_num_match:
+                current_faction = current_faction[faction_num_match.end() :]
+            continue
+        if sibling.name == "table":
+            rows = sibling.find_all("tr")
+            for row in rows:
+                cells = row.find_all("td")
+                if len(cells) < 4:
+                    continue
+                header_check = cells[0].get_text(strip=True)
+                if header_check == "Name":
+                    continue
+
+                name_cell = cells[0]
+                name_text = name_cell.get_text(strip=True)
+                name = _clean_name(name_text)
+
+                name_img = name_cell.find("img")
+                img_src = name_img["src"] if name_img and name_img.get("src") else None
+
+                rarity = _parse_rarity_from_img(cells[1])
+
+                attr_cell = cells[2]
+                attr_img = attr_cell.find("img")
+                attribute = None
+                if attr_img and attr_img.get("alt"):
+                    attribute = re.sub(r"^Icon_", "", attr_img["alt"])
+                if not attribute:
+                    attribute = attr_cell.get_text(strip=True) or None
+
+                spec_cell = cells[3]
+                spec_img = spec_cell.find("img")
+                speciality = None
+                if spec_img and spec_img.get("alt"):
+                    speciality = re.sub(r"^Icon_", "", spec_img["alt"])
+                if not speciality:
+                    speciality = spec_cell.get_text(strip=True) or None
+
+                agents.append(
+                    {
+                        "name": name,
+                        "img": img_src,
+                        "rank": rarity,
+                        "attribute": attribute,
+                        "speciality": speciality,
+                        "faction": current_faction,
+                    }
+                )
+
+    return agents
+
+
+def _parse_upcoming_tables(soup: BeautifulSoup, existing_names: set[str]) -> list[dict]:
+    agents = []
+    h2 = None
+    for tag in soup.find_all("h2"):
+        if "All Playable Characters" in tag.get_text():
+            h2 = tag
+            break
+
+    if not h2:
+        return agents
+
+    _header_patterns = {"Agents", "Version", "Upcoming"}
+
+    for sibling in h2.find_previous_siblings():
+        if sibling.name == "table":
+            rows = sibling.find_all("tr")
+            for row in rows:
+                cells = row.find_all("td")
+                for cell in cells:
+                    text = cell.get_text(strip=True)
+                    if not text:
+                        continue
+
+                    name = _clean_name(text)
+                    if any(name.startswith(p) for p in _header_patterns):
+                        continue
+
+                    if name in existing_names:
+                        continue
+
+                    rarity = _parse_rarity_from_text(text)
+
+                    img_tag = cell.find("img")
+                    img_src = img_tag["src"] if img_tag and img_tag.get("src") else None
+
+                    agents.append(
+                        {
+                            "name": name,
+                            "img": img_src,
+                            "rank": rarity,
+                            "attribute": None,
+                            "speciality": None,
+                            "faction": None,
+                        }
+                    )
+                    existing_names.add(name)
+
+    return agents
+
+
+def parse_agents(soup: BeautifulSoup) -> list[dict]:
     logger.info("parse.start")
 
-    cards = soup.find_all(class_="avatar-card")
-    logger.info("parse.cards_found count=%d", len(cards))
+    playable = _parse_playable_tables(soup)
+    logger.info("parse.playable count=%d", len(playable))
 
-    agents = []
+    existing_names = {a["name"] for a in playable}
+    upcoming = _parse_upcoming_tables(soup, existing_names)
+    logger.info("parse.upcoming count=%d (skipped duplicates)", len(upcoming))
 
-    for i, card in enumerate(cards):
-        try:
-            data = {}
-
-            data["rank"] = "S" if card.find(class_="rarity-S") else None
-            if not data["rank"]:
-                data["rank"] = "A" if card.find(class_="rarity-A") else None
-
-            emp_name = card.find(class_="emp-name")
-            data["name"] = emp_name.get_text().strip() if emp_name else None
-
-            link = card.find("a")
-            data["href"] = (
-                (WIKI_BASE_URL + str(link["href"]))
-                if link and link.get("href")
-                else None
-            )
-
-            img = card.find("img", alt=lambda x: x and x == data["name"])
-            data["img"] = img["src"]
-
-            element_div = card.find(class_="element")
-            element = (
-                element_div.find("img", alt=lambda x: x and x.strip())
-                if element_div
-                else None
-            )
-            data["attribute"] = element["alt"] if element else None
-
-            class_div = card.find(class_="class")
-            clas = (
-                class_div.find("img", alt=lambda x: x and x.strip())
-                if class_div
-                else None
-            )
-            data["speciality"] = clas["alt"] if clas else None
-
-            data["faction"] = None
-            if data["href"]:
-                data["faction"] = _parse_faction_from_detail(session, data["href"])
-                logger.debug(
-                    "faction_scrape name=%s faction=%s",
-                    data["name"],
-                    data["faction"],
-                )
-                time.sleep(0.5)
-
-            agents.append(data)
-
-        except Exception:
-            logger.exception("parse.card_failed index=%d", i)
-
+    agents = playable + upcoming
     n_with_faction = sum(1 for a in agents if a.get("faction"))
     logger.info(
-        "parse.done parsed=%d with_faction=%d success_rate=%.2f",
+        "parse.done total=%d with_faction=%d",
         len(agents),
         n_with_faction,
-        len(agents) / len(cards) if cards else 0,
     )
 
     return agents
@@ -193,8 +259,9 @@ def upsert_agent(con, agents: list[dict]):
     logger.info("db.agent_upsert.start rows=%d", len(agents))
 
     df = pd.DataFrame(agents)
-    if "href" in df.columns:
-        df = df.drop(columns=["href"])
+    for col in ["href"]:
+        if col in df.columns:
+            df = df.drop(columns=[col])
 
     con.register("agent_tmp", df)
 
@@ -263,13 +330,13 @@ def scrape_and_load():
         html = scrape_wiki(session)
 
         soup = BeautifulSoup(html, "html.parser")
-        agents = parse_agents(soup=soup, session=session)
+        agents = parse_agents(soup=soup)
 
         if not agents:
-            logger.warning("agents.no_agents_parsed")
+            logger.warning("agents.no_agents_parsed — using fallback data")
             return
 
-        logger.info("agents.loaded_agents count=%d", len(agents))
+        logger.info("agents.loaded count=%d", len(agents))
 
         with get_db() as con:
             upsert_agent(con, agents)
