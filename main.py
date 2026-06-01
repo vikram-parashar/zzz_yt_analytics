@@ -5,6 +5,7 @@ Usage:
     uv run main.py backfill           Backfill pipeline: 40 searches/day from 2024-01-01
     uv run main.py init-tables        Create DuckDB tables only
     uv run main.py scrape-agents      Scrape agent data from wiki
+    uv run main.py scrape-banners     Scrape banner schedule from game8.co
     uv run main.py enrich-videos      Enrich video metadata
     uv run main.py enrich-channels    Enrich channel metadata
     uv run main.py score              Score all unscored videos
@@ -45,6 +46,7 @@ from src.warehouse import (
 )
 from src.agents import scrape_and_load
 from src.matching import match_videos_to_agents
+from src.banners import scrape_banners
 
 logger = get_logger("main")
 config = load_scoring_config()
@@ -209,6 +211,7 @@ def daily():
     run_id = start_pipeline_run("daily")
     try:
         scrape_and_load()
+        scrape_banners()
         _run_daily_discover()
         enrich_videos()
         enrich_channels()
@@ -372,6 +375,7 @@ COMMANDS = {
     "backfill": backfill,
     "init-tables": init_tables,
     "scrape-agents": run_tracked("scrape-agents")(scrape_and_load),
+    "scrape-banners": run_tracked("scrape-banners")(scrape_banners),
     "enrich-videos": run_tracked("enrich-videos")(enrich_videos),
     "enrich-channels": run_tracked("enrich-channels")(enrich_channels),
     "match": run_tracked("match")(match_videos_to_agents),

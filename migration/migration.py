@@ -1,13 +1,6 @@
 from utils import get_db
 
 
-def migration1():
-    with get_db() as con:
-        con.execute("""
-            alter table dim_agent drop column release_version
-        """)
-
-
 def migration2():
     with get_db() as con:
         con.execute("""
@@ -80,5 +73,18 @@ def migration2():
         """)
 
 
-migration1()
-migration2()
+def migration3():
+    with get_db() as con:
+        con.execute("DROP TABLE IF EXISTS dim_patch")
+        con.execute("""
+            CREATE TABLE dim_patch (
+                version      VARCHAR,
+                agent_name   VARCHAR,
+                banner_start DATE,
+                banner_end   DATE,
+                PRIMARY KEY (version, agent_name)
+            )
+        """)
+
+
+migration3()

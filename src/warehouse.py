@@ -15,8 +15,7 @@ TABLE_DDL = {
             attribute VARCHAR,
             speciality VARCHAR,
             faction VARCHAR,
-            release_date DATE,
-            release_version VARCHAR
+            release_date DATE
         )
     """,
     "bridge_agent_alias": """
@@ -82,12 +81,11 @@ TABLE_DDL = {
     """,
     "dim_patch": """
         CREATE TABLE IF NOT EXISTS dim_patch (
-            version      VARCHAR PRIMARY KEY,
-            release_date DATE,
-            banner_agent VARCHAR,
+            version      VARCHAR,
+            agent_name   VARCHAR,
             banner_start DATE,
             banner_end   DATE,
-            notes        VARCHAR
+            PRIMARY KEY (version, agent_name)
         )
     """,
     "pipeline_runs_seq": """
@@ -119,6 +117,19 @@ def init_tables():
         for name, ddl in TABLE_DDL.items():
             con.execute(ddl)
             logger.info(f"Ensured table exists: {name}")
+
+
+def ensure_dim_patch_schema(con):
+    try:
+        columns = con.execute("DESCRIBE dim_patch").fetchall()
+        column_names = [col[0] for col in columns]
+    except Exception:
+        return
+
+    if "agent_name" not in column_names:
+        con.execute("DROP TABLE dim_patch")
+        con.execute(TABLE_DDL["dim_patch"])
+        logger.info("Recreated dim_patch with v2 schema (version+agent_name PK)")
 
 
 def get_pipeline_info(key: str, default: str | None = None) -> str | None:
