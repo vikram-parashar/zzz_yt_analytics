@@ -86,6 +86,7 @@ def setup():
 
     init_tables()
     scrape_and_load()
+    scrape_banners()
 
     logger.info("Setup complete — warehouse is ready")
 

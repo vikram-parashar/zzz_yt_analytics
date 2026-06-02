@@ -3,16 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.banners import scrape_banners
-from src.agents import scrape_and_load
 from src.utils import get_db
-
-
-def truncate():
-    with get_db() as con:
-        con.execute("""
-        truncate dim_agent
-        """)
 
 
 def dim_agent_update_release_date():
@@ -76,33 +67,4 @@ def dim_agent_update_release_date():
         """)
 
 
-def migration3():
-    with get_db() as con:
-        con.execute("DROP TABLE IF EXISTS dim_patch")
-        con.execute("""
-            CREATE TABLE dim_patch (
-                version      VARCHAR,
-                agent_name   VARCHAR,
-                banner_start DATE,
-                banner_end   DATE,
-                PRIMARY KEY (version, agent_name)
-            )
-        """)
-
-
-def dim_patch_insert_exclusive():
-    with get_db() as con:
-        con.execute("""
-            insert into dim_patch (version,agent_name,banner_start,banner_end) values
-            ('2.5','Astra Yao','2026-1-21','2026-02-5'),
-            ('2.5','Anby: Soldier 0','2026-1-21','2026-02-5'),
-            ('2.5','Alice','2026-1-21','2026-02-5')
-        """)
-
-
-truncate()
-scrape_and_load()
 dim_agent_update_release_date()
-migration3()
-dim_patch_insert_exclusive()
-scrape_banners()
