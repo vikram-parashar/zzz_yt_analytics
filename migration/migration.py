@@ -1,5 +1,12 @@
-from agents import scrape_and_load
-from utils import get_db
+import sys
+from pathlib import Path
+
+from banners import scrape_banners
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.agents import scrape_and_load
+from src.utils import get_db
 
 
 def truncate():
@@ -99,3 +106,4 @@ scrape_and_load()
 dim_agent_update_release_date()
 migration3()
 dim_patch_insert_exclusive()
+scrape_banners()
