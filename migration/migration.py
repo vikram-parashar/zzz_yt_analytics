@@ -1,10 +1,9 @@
 import sys
 from pathlib import Path
 
-from banners import scrape_banners
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.banners import scrape_banners
 from src.agents import scrape_and_load
 from src.utils import get_db
 
