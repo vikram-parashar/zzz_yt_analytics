@@ -1,4 +1,12 @@
+from agents import scrape_and_load
 from utils import get_db
+
+
+def truncate():
+    with get_db() as con:
+        con.execute("""
+        truncate dim_agent
+        """)
 
 
 def dim_agent_update_release_date():
@@ -15,7 +23,7 @@ def dim_agent_update_release_date():
                 ('Billy','2024-7-4'),
                 ('Nicole','2024-7-4'),
                 ('Anby','2024-7-4'),
-                ('Billy - Starlight','2026-5-27'),
+                ('Starlight Billy','2026-5-27'),
                 ('Nekomata','2024-7-4'),
                 ('Banyue','2025-12-17'),
                 ('Zhao','2025-12-30'),
@@ -26,7 +34,7 @@ def dim_agent_update_release_date():
                 ('Vivian','2025-4-23'),
                 ('Qingyi','2024-8-14'),
                 ('Zhu Yuan','2024-7-24'),
-                ('Jane Doe','2024-9-4'),
+                ('Jane','2024-9-4'),
                 ('Seth','2024-9-4'),
                 ('Soldier 11','2025-3-12'),
                 ('Seed','2025-9-4'),
@@ -49,7 +57,7 @@ def dim_agent_update_release_date():
                 ('Yidhari','2025-11-5'),
                 ('Evelyn','2025-2-12'),
                 ('Astra Yao','2025-1-22'),
-                ('Anby: Soldier 0','2025-3-12'),
+                ('Soldier 0 Anby','2025-3-12'),
                 ('Corin','2024-7-4'),
                 ('Ellen','2024-7-4'),
                 ('Lycaon','2024-7-4'),
@@ -86,6 +94,8 @@ def dim_patch_insert_exclusive():
         """)
 
 
+truncate()
+scrape_and_load()
 dim_agent_update_release_date()
 migration3()
 dim_patch_insert_exclusive()
