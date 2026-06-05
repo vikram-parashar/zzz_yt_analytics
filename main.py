@@ -10,6 +10,7 @@ Usage:
     uv run main.py enrich-channels    Enrich channel metadata
     uv run main.py score              Score all unscored videos
     uv run main.py match              Build video-agent associations
+    uv run main.py build-agent-daily  Rebuild fact_agent_daily aggregates
     uv run main.py query <sql>        Run SQL queries in the warehouse
     uv run main.py publish            Checkpoint + copy versioned warehouse
     uv run main.py status             Show pipeline status
@@ -43,6 +44,8 @@ from src.warehouse import (
     start_pipeline_run,
     finish_pipeline_run,
     did_pipeline_run_today,
+    update_latest_video_counts,
+    build_fact_agent_daily,
 )
 from src.agents import scrape_and_load
 from src.matching import match_videos_to_agents
@@ -111,6 +114,9 @@ def backfill():
         enrich_videos()
         enrich_channels()
         match_videos_to_agents()
+        with get_db() as con:
+            update_latest_video_counts(con)
+            build_fact_agent_daily(con)
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -217,6 +223,10 @@ def daily():
         enrich_videos()
         enrich_channels()
         match_videos_to_agents()
+        today = pendulum.now().to_date_string()
+        with get_db() as con:
+            update_latest_video_counts(con)
+            build_fact_agent_daily(con, snapshot_date=today)
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -370,6 +380,14 @@ def publish():
     logger.info("Published latest copy -> latest.db")
 
 
+def build_agent_daily_cmd():
+    """Rebuild fact_agent_daily from bridge + fact_video_daily."""
+    with get_db() as con:
+        update_latest_video_counts(con)
+        build_fact_agent_daily(con)
+    logger.info("Agent daily aggregation complete")
+
+
 COMMANDS = {
     "setup": setup,
     "daily": daily,
@@ -380,6 +398,7 @@ COMMANDS = {
     "enrich-videos": run_tracked("enrich-videos")(enrich_videos),
     "enrich-channels": run_tracked("enrich-channels")(enrich_channels),
     "match": run_tracked("match")(match_videos_to_agents),
+    "build-agent-daily": run_tracked("build-agent-daily")(build_agent_daily_cmd),
     "status": status,
     "publish": publish,
     "score": run_tracked("score")(score_cmd),

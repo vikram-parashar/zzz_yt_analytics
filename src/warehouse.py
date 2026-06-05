@@ -37,7 +37,10 @@ TABLE_DDL = {
             duration_seconds INT,
             relevance_score REAL DEFAULT 0.0,
             is_relevant BOOLEAN DEFAULT false,
-            ingested_date DATE
+            ingested_date DATE,
+            latest_view_count BIGINT,
+            latest_like_count BIGINT,
+            latest_comment_count BIGINT
         )
     """,
     "dim_channel": """
@@ -76,6 +79,7 @@ TABLE_DDL = {
             video_id VARCHAR,
             agent_name VARCHAR,
             confidence REAL,
+            attribution_weight REAL DEFAULT 0.0,
             PRIMARY KEY (video_id, agent_name)
         )
     """,
@@ -103,6 +107,17 @@ TABLE_DDL = {
             error        VARCHAR
         )
     """,
+    "fact_agent_daily": """
+        CREATE TABLE IF NOT EXISTS fact_agent_daily (
+            agent_name VARCHAR,
+            snapshot_date DATE,
+            attributed_views DOUBLE,
+            attributed_likes DOUBLE,
+            attributed_comments DOUBLE,
+            video_count BIGINT,
+            PRIMARY KEY (agent_name, snapshot_date)
+        )
+    """,
     "pipeline_info": """
         CREATE TABLE IF NOT EXISTS pipeline_info (
             key   VARCHAR PRIMARY KEY,
@@ -117,6 +132,43 @@ def init_tables():
         for name, ddl in TABLE_DDL.items():
             con.execute(ddl)
             logger.info(f"Ensured table exists: {name}")
+        _ensure_bridge_video_agent_schema(con)
+        _ensure_dim_video_schema(con)
+
+
+def _ensure_bridge_video_agent_schema(con):
+    """Add attribution_weight column to bridge_video_agent if missing."""
+    try:
+        columns = con.execute("DESCRIBE bridge_video_agent").fetchall()
+        column_names = [col[0] for col in columns]
+    except Exception:
+        return
+
+    if "attribution_weight" not in column_names:
+        con.execute(
+            "ALTER TABLE bridge_video_agent ADD COLUMN attribution_weight REAL DEFAULT 0.0"
+        )
+        logger.info("Added attribution_weight column to bridge_video_agent")
+
+
+def _ensure_dim_video_schema(con):
+    """Add latest_view_count, latest_like_count, latest_comment_count to dim_video if missing."""
+    try:
+        columns = con.execute("DESCRIBE dim_video").fetchall()
+        column_names = [col[0] for col in columns]
+    except Exception:
+        return
+
+    for col_name, col_type in [
+        ("latest_view_count", "BIGINT"),
+        ("latest_like_count", "BIGINT"),
+        ("latest_comment_count", "BIGINT"),
+    ]:
+        if col_name not in column_names:
+            con.execute(
+                f"ALTER TABLE dim_video ADD COLUMN {col_name} {col_type}"
+            )
+            logger.info(f"Added {col_name} column to dim_video")
 
 
 def ensure_dim_patch_schema(con):
@@ -349,6 +401,15 @@ def upsert_video_details(con, df: pd.DataFrame):
         [now.to_date_string(), now.to_datetime_string()],
     )
 
+    con.execute("""
+        UPDATE dim_video AS dv
+        SET latest_view_count = t.view_count,
+            latest_like_count = t.like_count,
+            latest_comment_count = t.comment_count
+        FROM tmp_video_stats AS t
+        WHERE dv.video_id = t.video_id
+    """)
+
 
 def upsert_channel_details(con, df: pd.DataFrame):
     if df.empty:
@@ -417,3 +478,95 @@ def update_video_scores(con, scored_df: pd.DataFrame):
         FROM score_tmp AS s
         WHERE v.video_id = s.video_id
     """)
+
+
+
+
+def update_attribution_weights(con):
+    """Recalculate attribution_weight for every row in bridge_video_agent.
+
+    attribution_weight = confidence / total_conf
+    where total_conf = SUM(confidence) for all agents of that video.
+    A video with a single matched agent gets weight 1.0.
+    """
+    con.execute("""
+        UPDATE bridge_video_agent AS b
+        SET attribution_weight = b.confidence / total_conf
+        FROM (
+            SELECT video_id, SUM(confidence) AS total_conf
+            FROM bridge_video_agent
+            GROUP BY video_id
+        ) AS totals
+        WHERE b.video_id = totals.video_id
+          AND totals.total_conf > 0
+    """)
+    row_count = con.execute("SELECT COUNT(*) FROM bridge_video_agent").fetchone()[0]
+    logger.info(f"Updated attribution_weight for {row_count} bridge rows")
+
+
+def update_latest_video_counts(con):
+    """Denormalise the latest snapshot counts from fact_video_daily into dim_video.
+
+    For each video, picks the row with the most recent snapshot_date and
+    writes its view/like/comment counts into dim_video.latest_* columns.
+    """
+    con.execute("""
+        UPDATE dim_video AS dv
+        SET latest_view_count = latest.view_count,
+            latest_like_count = latest.like_count,
+            latest_comment_count = latest.comment_count
+        FROM (
+            SELECT DISTINCT ON (video_id)
+                   video_id, view_count, like_count, comment_count
+            FROM fact_video_daily
+            ORDER BY video_id, snapshot_date DESC
+        ) AS latest
+        WHERE dv.video_id = latest.video_id
+    """)
+    row_count = con.execute(
+        "SELECT COUNT(*) FROM dim_video WHERE latest_view_count IS NOT NULL"
+    ).fetchone()[0]
+    logger.info(f"Updated latest counts for {row_count} videos in dim_video")
+
+
+def build_fact_agent_daily(con, snapshot_date: str | None = None):
+    """Populate fact_agent_daily from bridge_video_agent × fact_video_daily.
+
+    For each (agent_name, snapshot_date):
+      - attributed_views    = SUM(attribution_weight * view_count)
+      - attributed_likes    = SUM(attribution_weight * like_count)
+      - attributed_comments = SUM(attribution_weight * comment_count)
+      - video_count         = COUNT(DISTINCT video_id)
+
+    If snapshot_date is provided, only rows for that date are (re-)computed.
+    Otherwise the entire table is rebuilt.
+    """
+    if snapshot_date:
+        con.execute(
+            "DELETE FROM fact_agent_daily WHERE snapshot_date = ?",
+            [snapshot_date],
+        )
+
+    con.execute(f"""
+        INSERT INTO fact_agent_daily
+            (agent_name, snapshot_date,
+             attributed_views, attributed_likes, attributed_comments, video_count)
+        SELECT
+            b.agent_name,
+            f.snapshot_date,
+            SUM(b.attribution_weight * f.view_count)     AS attributed_views,
+            SUM(b.attribution_weight * f.like_count)     AS attributed_likes,
+            SUM(b.attribution_weight * f.comment_count)  AS attributed_comments,
+            COUNT(DISTINCT b.video_id)                    AS video_count
+        FROM bridge_video_agent AS b
+        JOIN fact_video_daily   AS f
+          ON b.video_id = f.video_id
+        {'WHERE f.snapshot_date = ?' if snapshot_date else ''}
+        GROUP BY b.agent_name, f.snapshot_date
+    """, [snapshot_date] if snapshot_date else [])
+
+    row_count = con.execute("SELECT COUNT(*) FROM fact_agent_daily").fetchone()[0]
+    logger.info(
+        f"Built fact_agent_daily ({'date=' + snapshot_date if snapshot_date else 'full rebuild'}): "
+        f"{row_count} rows"
+    )

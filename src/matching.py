@@ -4,6 +4,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.utils import get_logger, get_db
+from src.warehouse import update_attribution_weights
 
 logger = get_logger(__name__)
 
@@ -86,9 +87,7 @@ def _compute_confidence(
 def _match_inner(con):
     """Core matching logic — runs inside a db connection context."""
     aliases = con.sql("SELECT * FROM bridge_agent_alias").df()
-    videos = con.sql(
-        "SELECT video_id, title, description, tags FROM dim_video"
-    ).df()
+    videos = con.sql("SELECT video_id, title, description, tags FROM dim_video").df()
 
     logger.info(f"Matching {len(videos)} videos against {len(aliases)} aliases")
 
@@ -133,6 +132,8 @@ def _match_inner(con):
               SELECT video_id FROM bridge_video_agent WHERE agent_name = 'Anby: Soldier 0'
           )
     """)
+
+    update_attribution_weights(con)
 
 
 def match_videos_to_agents(con=None):
