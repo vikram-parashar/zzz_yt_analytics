@@ -45,11 +45,11 @@ def search_videos(
     query: str,
     published_after: str,
     published_before: str,
-    page_token: str | None = None,
-) -> tuple[list[dict], str | None]:
+    order: str = "date",
+) -> list[dict]:
     logger.info(
-        f"Searching videos | query='{query}' "
-        f"after={published_after} | before={published_before} | "
+        f"Searching videos | query='{query}' | order={order} | "
+        f"after={published_after} | before={published_before}"
     )
 
     params = {
@@ -57,29 +57,24 @@ def search_videos(
         "part": "snippet",
         "type": "video",
         "maxResults": 50,
-        "order": "date",
+        "order": order,
+        "videoCategoryId": 20,
         "relevanceLanguage": "en",
         "publishedBefore": published_before,
         "publishedAfter": published_after,
     }
-    if page_token:
-        params["pageToken"] = page_token
 
     for attempt in range(MAX_RETRIES + 1):
         try:
             res = _get_client().search().list(**params).execute()
             items = res.get("items", [])
-            next_token = res.get("nextPageToken")
-            logger.info(
-                f"Found {len(items)} videos for '{query}' "
-                f"(nextPageToken={'yes' if next_token else 'none'})"
-            )
-            return items, next_token
+            logger.info(f"Found {len(items)} videos for '{query}' (order={order})")
+            return items
 
         except HttpError as e:
             if _is_rate_limit_error(e):
                 if attempt < MAX_RETRIES:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = RETRY_BASE_DELAY * (2**attempt)
                     logger.warning(
                         f"Rate limited (429) on attempt {attempt + 1}/{MAX_RETRIES + 1}. "
                         f"Waiting {delay}s before retry..."
@@ -96,47 +91,13 @@ def search_videos(
                     ) from e
             else:
                 logger.error(f"YouTube search API error: {e}")
-                return [], None
+                return []
 
         except Exception as e:
             logger.error(f"Unexpected error during YouTube search: {e}")
-            return [], None
+            return []
 
-    return [], None
-
-
-def search_videos_paginated(
-    query: str,
-    max_pages: int = 1,
-    published_after: str | None = None,
-    published_before: str | None = None,
-) -> list[dict]:
-    all_items = []
-    next_token = None
-
-    for page in range(max_pages):
-        items, next_token = search_videos(
-            query=query,
-            published_after=published_after,
-            published_before=published_before,
-            page_token=next_token,
-        )
-        all_items.extend(items)
-
-        if not next_token:
-            break
-
-        logger.info(
-            f"Paginated search page {page + 1}/{max_pages}, got {len(items)} items"
-        )
-
-        if page < max_pages - 1:
-            time.sleep(SEARCH_DELAY_SECONDS)
-
-    logger.info(
-        f"Paginated search complete: {len(all_items)} total items across {min(page + 1, max_pages)} pages"
-    )
-    return all_items
+    return []
 
 
 def fetch_video_stats(video_ids: list[str]) -> list[dict]:

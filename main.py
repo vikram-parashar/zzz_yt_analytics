@@ -2,7 +2,9 @@
 Usage:
     uv run main.py setup              First-time warehouse setup
     uv run main.py daily              Daily incremental pipeline (includes match)
-    uv run main.py backfill           Backfill pipeline: 40 searches/day from 2024-01-01
+    uv run main.py backfill           Run both Type I + Type II backfill (60+20 searches/day)
+    uv run main.py backfill-popular   Type I backfill: popular by viewCount, 60 searches/day
+    uv run main.py backfill-random    Type II backfill: random by date, 20 searches/day
     uv run main.py init-tables        Create DuckDB tables only
     uv run main.py scrape-agents      Scrape agent data from wiki
     uv run main.py scrape-banners     Scrape banner schedule from game8.co
@@ -17,6 +19,7 @@ Usage:
 """
 
 import functools
+import random
 import sys
 import time
 import pendulum
@@ -24,11 +27,7 @@ from pathlib import Path
 import shutil
 from src.scoring import load_scoring_config, score_existing_videos, score_videos
 from src.utils import DB_PATH, get_logger, get_db, chunk_list
-from src.youtube import (
-    search_videos,
-    fetch_video_stats,
-    fetch_channel_stats,
-)
+from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
 from src.warehouse import (
     get_pipeline_info,
     init_tables,
@@ -56,7 +55,11 @@ config = load_scoring_config()
 
 BACKFILL_TOPIC = "Zenless Zone Zero"
 BACKFILL_START_DATE = "2024-01-01"
-BACKFILL_MAX_SEARCHES = 40
+
+TYPE1_MAX_SEARCHES = 60
+
+TYPE2_MAX_SEARCHES = 20
+TYPE2_SEARCHES_PER_MONTH = 10
 
 SEARCH_DELAY_SECONDS = 2.0
 
@@ -81,6 +84,17 @@ def run_tracked(pipeline_name: str):
     return decorator
 
 
+def _ingest_search_results(con, items, discovery_type: str) -> int:
+    """Score search items, filter relevant, insert to warehouse. Returns count of new relevant videos."""
+    if not items:
+        return 0
+    df = _video_search_to_df(items)
+    df = score_videos(df, config)
+    relevant_df = df[df["is_relevant"]].copy()
+    insert_discovered_videos(con, relevant_df, discovery_type=discovery_type)
+    return len(relevant_df)
+
+
 def setup():
     """One-time setup: init tables + scrape agents."""
     logger.info("=" * 50)
@@ -94,23 +108,261 @@ def setup():
     logger.info("Setup complete — warehouse is ready")
 
 
+def _run_backfill_type1():
+    """Type I: Daily windows from BACKFILL_START_DATE, order=viewCount.
+
+    Progress tracked in pipeline_info:
+      - type1_last_day:   last fully-processed date string (e.g. '2024-03-15')
+      - type1_completed:  'true' when we've reached yesterday
+    """
+    if get_pipeline_info("type1_completed", "false") == "true":
+        logger.info("Type I backfill already completed — skipping")
+        return
+
+    last_day = get_pipeline_info("type1_last_day")
+    if last_day is None:
+        current_date = pendulum.parse(BACKFILL_START_DATE)
+        logger.info(f"Type I backfill starting from {BACKFILL_START_DATE}")
+    else:
+        current_date = pendulum.parse(last_day).add(days=1)
+        logger.info(f"Type I backfill resuming from {current_date.to_date_string()}")
+
+    yesterday = pendulum.yesterday()
+    total_new = 0
+    searches_used = 0
+
+    with get_db() as con:
+        while searches_used < TYPE1_MAX_SEARCHES:
+            if current_date > yesterday:
+                set_pipeline_info("type1_completed", "true")
+                set_pipeline_info("type1_last_day", yesterday.to_date_string())
+                logger.info(
+                    f"Type I COMPLETE! Reached yesterday ({yesterday.to_date_string()}). "
+                    f"Total new: {total_new}"
+                )
+                return
+
+            day_start = current_date.start_of("day")
+            day_end = current_date.add(days=1).start_of("day")
+
+            if searches_used > 0:
+                time.sleep(SEARCH_DELAY_SECONDS)
+
+            items = search_videos(
+                query=BACKFILL_TOPIC,
+                published_after=day_start.to_rfc3339_string(),
+                published_before=day_end.to_rfc3339_string(),
+                order="viewCount",
+            )
+            searches_used += 1
+
+            n_new = _ingest_search_results(con, items, discovery_type="popular")
+            total_new += n_new
+
+            logger.info(
+                f"[Type I] {current_date.to_date_string()} | "
+                f"{len(items)} raw -> {n_new} relevant | "
+                f"searches: {searches_used}/{TYPE1_MAX_SEARCHES}"
+            )
+
+            set_pipeline_info("type1_last_day", current_date.to_date_string())
+            current_date = current_date.add(days=1)
+
+        logger.info(
+            f"Type I paused after {searches_used} searches. "
+            f"Last day: {get_pipeline_info('type1_last_day')}. "
+            f"Total new: {total_new}"
+        )
+
+
+def _random_timestamp_in_month(year: int, month: int) -> pendulum.DateTime:
+    """Return a random timestamp uniformly distributed within the given month."""
+    start = pendulum.datetime(year, month, 1, 0, 0, 0)
+    if month == 12:
+        end = pendulum.datetime(year + 1, 1, 1, 0, 0, 0)
+    else:
+        end = pendulum.datetime(year, month + 1, 1, 0, 0, 0)
+
+    delta_seconds = int((end - start).total_seconds())
+    random_offset = random.randint(0, max(delta_seconds - 1, 0))
+    return start.add(seconds=random_offset)
+
+
+def _run_backfill_type2():
+    """Type II: Random timestamp sampling per month, order=date.
+
+    For each completed month (before current month): 10 random searches.
+    For the current month: (day_of_month // 3) random searches.
+    Max 20 searches per run. Progress tracked in pipeline_info:
+      - type2_current_month:  'YYYY-MM' of the month currently being processed
+      - type2_searches_done:  how many searches done for the current month so far
+      - type2_completed:      'true' when all complete months are done
+    """
+    if get_pipeline_info("type2_completed", "false") == "true":
+        logger.info("Type II backfill already completed — skipping")
+        return
+
+    now = pendulum.now()
+    current_month_start = pendulum.datetime(now.year, now.month, 1, 0, 0, 0)
+
+    saved_month = get_pipeline_info("type2_current_month")
+    saved_done = get_pipeline_info("type2_searches_done")
+
+    if saved_month:
+        year, month = saved_month.split("-")
+        cursor = pendulum.datetime(int(year), int(month), 1, 0, 0, 0)
+        searches_done_in_month = int(saved_done) if saved_done else 0
+        logger.info(
+            f"Type II resuming from {saved_month} with {searches_done_in_month} searches already done"
+        )
+    else:
+        cursor = pendulum.parse(BACKFILL_START_DATE).start_of("month")
+        searches_done_in_month = 0
+        logger.info(f"Type II starting from {BACKFILL_START_DATE}")
+
+    total_new = 0
+    total_searches = 0
+
+    with get_db() as con:
+        while total_searches < TYPE2_MAX_SEARCHES:
+            is_current_month = cursor >= current_month_start
+
+            if is_current_month:
+                target_count = max(now.day // 3, 1)
+            else:
+                target_count = TYPE2_SEARCHES_PER_MONTH
+
+            remaining_for_month = target_count - searches_done_in_month
+            if remaining_for_month <= 0:
+                if is_current_month:
+                    set_pipeline_info("type2_current_month", cursor.format("YYYY-MM"))
+                    set_pipeline_info("type2_searches_done", str(target_count))
+                    logger.info(
+                        f"Type II current month {cursor.format('YYYY-MM')} done. "
+                        f"Total new: {total_new}, searches: {total_searches}"
+                    )
+                    return
+
+                cursor = cursor.add(months=1)
+                searches_done_in_month = 0
+                if cursor >= current_month_start:
+                    set_pipeline_info("type2_completed", "true")
+                    set_pipeline_info("type2_current_month", cursor.format("YYYY-MM"))
+                    set_pipeline_info("type2_searches_done", "0")
+                    logger.info(
+                        f"Type II: all complete months done. "
+                        f"Total new: {total_new}, searches: {total_searches}"
+                    )
+                    return
+                continue
+
+            month_searches = 0
+            while remaining_for_month > 0 and total_searches < TYPE2_MAX_SEARCHES:
+                if total_searches > 0 or month_searches > 0:
+                    time.sleep(SEARCH_DELAY_SECONDS)
+
+                rand_ts = _random_timestamp_in_month(cursor.year, cursor.month)
+                month_start = cursor.start_of("month")
+
+                items = search_videos(
+                    query=BACKFILL_TOPIC,
+                    published_after=month_start.to_rfc3339_string(),
+                    published_before=rand_ts.to_rfc3339_string(),
+                    order="date",
+                )
+                total_searches += 1
+                month_searches += 1
+                searches_done_in_month += 1
+                remaining_for_month -= 1
+
+                n_new = _ingest_search_results(con, items, discovery_type="random")
+                total_new += n_new
+
+                logger.info(
+                    f"[Type II] {cursor.format('YYYY-MM')} search #{searches_done_in_month}/{target_count} | "
+                    f"before={rand_ts.format('YYYY-MM-DD HH:mm')} | "
+                    f"{len(items)} raw -> {n_new} relevant | "
+                    f"total: {total_searches}/{TYPE2_MAX_SEARCHES}"
+                )
+
+            set_pipeline_info("type2_current_month", cursor.format("YYYY-MM"))
+            set_pipeline_info("type2_searches_done", str(searches_done_in_month))
+
+            if total_searches >= TYPE2_MAX_SEARCHES:
+                logger.info(
+                    f"Type II paused after {total_searches} searches at {cursor.format('YYYY-MM')}. "
+                    f"Total new: {total_new}"
+                )
+                return
+
+            if is_current_month:
+                logger.info(
+                    f"Type II current month {cursor.format('YYYY-MM')} done. "
+                    f"Total new: {total_new}, searches: {total_searches}"
+                )
+                return
+
+            cursor = cursor.add(months=1)
+            searches_done_in_month = 0
+
+            if cursor >= current_month_start:
+                set_pipeline_info("type2_completed", "true")
+                set_pipeline_info("type2_current_month", cursor.format("YYYY-MM"))
+                set_pipeline_info("type2_searches_done", "0")
+                logger.info(
+                    f"Type II: all complete months done. "
+                    f"Total new: {total_new}, searches: {total_searches}"
+                )
+                return
+
+
 def backfill():
-    """
-    Backfill data from 2024-01-01 to yesterday.
-    Each search covers a 24hr window with max 50 results.
-    Runs up to 40 searches per run (40 × 100 = 4000 quota units).
-    Pipeline state is tracked in pipeline_info.
-    If backfill is already completed, then skip.
-    Includes throttling to respect YouTube API per-minute rate limits.
-    After discovery, enriches all newly discovered videos and channels.
-    """
-    if get_pipeline_info("backfill_completed", "false") == "true":
-        logger.info("Backfill already completed — skipping")
+    """Run both Type I and Type II backfill in sequence, then enrich + match."""
+    type1_done = get_pipeline_info("type1_completed", "false") == "true"
+    type2_done = get_pipeline_info("type2_completed", "false") == "true"
+
+    if type1_done and type2_done:
+        logger.info("Both backfill types already completed — skipping")
         return
 
     run_id = start_pipeline_run("backfill")
     try:
-        _run_backfill()
+        if not type1_done:
+            logger.info("=" * 50)
+            logger.info("TYPE I BACKFILL (Popular / viewCount)")
+            logger.info("=" * 50)
+            _run_backfill_type1()
+
+        if not type2_done:
+            logger.info("=" * 50)
+            logger.info("TYPE II BACKFILL (Random / date)")
+            logger.info("=" * 50)
+            _run_backfill_type2()
+
+        enrich_videos()
+        enrich_channels()
+
+        match_videos_to_agents()
+
+        with get_db() as con:
+            update_latest_video_counts(con)
+            build_fact_agent_daily(con)
+
+        finish_pipeline_run(run_id)
+    except Exception as e:
+        finish_pipeline_run(run_id, error=str(e))
+        raise
+
+
+def backfill_popular():
+    """Run only Type I backfill (popular / viewCount), then enrich + match."""
+    if get_pipeline_info("type1_completed", "false") == "true":
+        logger.info("Type I backfill already completed — skipping")
+        return
+
+    run_id = start_pipeline_run("backfill-popular")
+    try:
+        _run_backfill_type1()
         enrich_videos()
         enrich_channels()
         match_videos_to_agents()
@@ -123,93 +375,40 @@ def backfill():
         raise
 
 
-def _run_backfill():
-    last_day = get_pipeline_info("last_processed_day")
-    if last_day is None:
-        current_date = pendulum.parse(BACKFILL_START_DATE)
-        logger.info(f"Backfill starting from {BACKFILL_START_DATE}")
-    else:
-        current_date = pendulum.parse(last_day).add(days=1)
-        logger.info(f"Backfill resuming from {current_date.to_date_string()}")
+def backfill_random():
+    """Run only Type II backfill (random / date), then enrich + match."""
+    if get_pipeline_info("type2_completed", "false") == "true":
+        logger.info("Type II backfill already completed — skipping")
+        return
 
-    yesterday = pendulum.yesterday()
-    total_new_videos = 0
-    searches_used = 0
-
-    with get_db() as con:
-        while searches_used < BACKFILL_MAX_SEARCHES:
-            if current_date > yesterday:
-                set_pipeline_info("backfill_completed", "true")
-                set_pipeline_info("last_processed_day", yesterday.to_date_string())
-
-                logger.info(
-                    f"Backfill COMPLETE! Reached yesterday "
-                    f"({yesterday.to_date_string()}). "
-                    f"Total new videos: {total_new_videos}"
-                )
-                return
-
-            day_start = current_date.start_of("day")
-            day_end = current_date.add(days=1).start_of("day")
-
-            if searches_used > 0:
-                logger.debug(
-                    f"Throttling: waiting {SEARCH_DELAY_SECONDS}s before next search"
-                )
-                time.sleep(SEARCH_DELAY_SECONDS)
-
-            items, nextToken = search_videos(
-                query=BACKFILL_TOPIC,
-                published_after=day_start.to_rfc3339_string(),
-                published_before=day_end.to_rfc3339_string(),
-            )
-            searches_used += 1
-
-            if items:
-                df = _video_search_to_df(items)
-                df = score_videos(df, config)
-                relevant_df = df[df["is_relevant"]].copy()
-                insert_discovered_videos(con, relevant_df)
-
-                n_new = len(relevant_df)
-                total_new_videos += n_new
-
-                logger.info(
-                    f"[{current_date.to_date_string()}] "
-                    f"Found {len(items)} raw -> {len(relevant_df)} relevant videos "
-                    f"(searches: {searches_used}/{BACKFILL_MAX_SEARCHES})"
-                )
-            else:
-                logger.info(
-                    f"[{current_date.to_date_string()}] "
-                    f"No videos found "
-                    f"(searches: {searches_used}/{BACKFILL_MAX_SEARCHES})"
-                )
-
-            set_pipeline_info("last_processed_day", current_date.to_date_string())
-            current_date = current_date.add(days=1)
-
-        logger.info(
-            f"Backfill paused after {searches_used} searches. "
-            f"Last processed day: {get_pipeline_info('last_processed_day')}. "
-            f"Total new videos: {total_new_videos}"
-        )
+    run_id = start_pipeline_run("backfill-random")
+    try:
+        _run_backfill_type2()
+        enrich_videos()
+        enrich_channels()
+        match_videos_to_agents()
+        with get_db() as con:
+            update_latest_video_counts(con)
+            build_fact_agent_daily(con)
+        finish_pipeline_run(run_id)
+    except Exception as e:
+        finish_pipeline_run(run_id, error=str(e))
+        raise
 
 
 def daily():
-    """Daily pipeline: scrape agents → discover → enrich → match.
+    """Daily pipeline: scrape agents -> discover -> enrich -> match -> aggregate.
 
-    Idempotent — skips if a successful 'daily' run already exists for today.
+    Discovery strategy depends on which backfill types are complete:
+      - Type I complete:  fetch once with order='viewCount',
+                          publishedBefore=now(), publishedAfter=now()-1d3h
+      - Type II complete: fetch once with order='date',
+                          publishedBefore=now(), publishedAfter=random timestamp
+                          (random between now() and max(published_at) from existing videos)
     """
     if did_pipeline_run_today("daily"):
         logger.info("Daily pipeline already ran today — skipping")
         return
-
-    if get_pipeline_info("backfill_completed", "false") == "false":
-        logger.warning(
-            "Backfill is not yet completed. Run 'backfill' command first. "
-            "Daily discovery will proceed for today only."
-        )
 
     logger.info("=" * 50)
     logger.info("DAILY PIPELINE")
@@ -219,14 +418,19 @@ def daily():
     try:
         scrape_and_load()
         scrape_banners()
+
         _run_daily_discover()
+
         enrich_videos()
         enrich_channels()
+
         match_videos_to_agents()
+
         today = pendulum.now().to_date_string()
         with get_db() as con:
             update_latest_video_counts(con)
             build_fact_agent_daily(con, snapshot_date=today)
+
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -236,37 +440,79 @@ def daily():
 
 
 def _run_daily_discover():
-    yesterday = pendulum.yesterday()
-    day_start = yesterday.start_of("day")
+    """Discover new videos based on which backfill types are complete."""
+    type1_done = get_pipeline_info("type1_completed", "false") == "true"
+    type2_done = get_pipeline_info("type2_completed", "false") == "true"
 
+    now = pendulum.now()
     total_new = 0
 
     with get_db() as con:
-        for window_idx in range(2):
-            window_start = day_start.add(hours=12 * window_idx)
-            window_end = day_start.add(hours=12 * (window_idx + 1))
+        if type1_done:
+            published_after = now.subtract(hours=27).to_rfc3339_string()
+            published_before = now.to_rfc3339_string()
 
-            if window_idx > 0:
-                time.sleep(SEARCH_DELAY_SECONDS)
-
-            items, _ = search_videos(
-                query=BACKFILL_TOPIC,
-                published_after=window_start.to_rfc3339_string(),
-                published_before=window_end.to_rfc3339_string(),
+            logger.info(
+                f"[Daily Type I] order=viewCount | "
+                f"after={published_after} | before={published_before}"
             )
 
-            if items:
-                df = _video_search_to_df(items)
-                df = score_videos(df, config)
-                relevant_df = df[df["is_relevant"]].copy()
-                insert_discovered_videos(con, relevant_df)
-                total_new += len(relevant_df)
-                logger.info(
-                    f"[Yesterday window {window_idx + 1}] "
-                    f"Found {len(items)} raw -> {len(relevant_df)} relevant"
-                )
+            items = search_videos(
+                query=BACKFILL_TOPIC,
+                published_after=published_after,
+                published_before=published_before,
+                order="viewCount",
+            )
+            n_new = _ingest_search_results(con, items, discovery_type="popular")
+            total_new += n_new
+            logger.info(f"[Daily Type I] {len(items)} raw -> {n_new} relevant")
+        else:
+            logger.info("[Daily Type I] skipped — Type I backfill not complete")
+
+        time.sleep(SEARCH_DELAY_SECONDS)
+
+        if type2_done:
+            published_before = now.to_rfc3339_string()
+
+            try:
+                max_published = con.execute(
+                    "SELECT MAX(published_at) FROM dim_video"
+                ).fetchone()[0]
+            except Exception:
+                max_published = None
+
+            if max_published:
+                if isinstance(max_published, str):
+                    lower_bound = pendulum.parse(max_published)
+                else:
+                    lower_bound = pendulum.instance(max_published)
+
+                delta_seconds = int((now - lower_bound).total_seconds())
+                if delta_seconds > 0:
+                    random_offset = random.randint(0, delta_seconds)
+                    random_ts = lower_bound.add(seconds=random_offset)
+                    published_after = random_ts.to_rfc3339_string()
+                else:
+                    published_after = now.subtract(hours=27).to_rfc3339_string()
             else:
-                logger.info(f"[Yesterday window {window_idx + 1}] No videos found")
+                published_after = now.subtract(hours=27).to_rfc3339_string()
+
+            logger.info(
+                f"[Daily Type II] order=date | "
+                f"after={published_after} | before={published_before}"
+            )
+
+            items = search_videos(
+                query=BACKFILL_TOPIC,
+                published_after=published_after,
+                published_before=published_before,
+                order="date",
+            )
+            n_new = _ingest_search_results(con, items, discovery_type="random")
+            total_new += n_new
+            logger.info(f"[Daily Type II] {len(items)} raw -> {n_new} relevant")
+        else:
+            logger.info("[Daily Type II] skipped — Type II backfill not complete")
 
     logger.info(f"Daily discovery: {total_new} new relevant videos")
 
@@ -312,8 +558,10 @@ def score_cmd():
 
 def status():
     """Show current pipeline status."""
-    backfill_done = get_pipeline_info("backfill_completed", "false") == "true"
-    last_day = get_pipeline_info("last_processed_day")
+    type1_done = get_pipeline_info("type1_completed", "false") == "true"
+    type2_done = get_pipeline_info("type2_completed", "false") == "true"
+    type1_last_day = get_pipeline_info("type1_last_day")
+    type2_current_month = get_pipeline_info("type2_current_month")
 
     n_videos = n_relevant = n_channels = n_agents = 0
     with get_db() as con:
@@ -327,21 +575,22 @@ def status():
         except Exception:
             n_videos = n_relevant = n_channels = n_agents = 0
 
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 60)
     print("  PIPELINE STATUS")
-    print("=" * 50)
-    print(f"  Videos:         {n_videos} ({n_relevant} relevant)")
-    print(f"  Channels:       {n_channels}")
-    print(f"  Agents:         {n_agents}")
-    print(f"  Backfill done:  {backfill_done}")
-    print(f"  Last processed: {last_day or 'not started'}")
-    if not backfill_done and last_day:
+    print("=" * 60)
+    print(f"  Videos:             {n_videos} ({n_relevant} relevant)")
+    print(f"  Channels:           {n_channels}")
+    print(f"  Agents:             {n_agents}")
+    print(f"  Type I (popular):   {'DONE' if type1_done else 'IN PROGRESS'}")
+    print(f"    Last processed:   {type1_last_day or 'not started'}")
+    print(f"  Type II (random):   {'DONE' if type2_done else 'IN PROGRESS'}")
+    print(f"    Current month:    {type2_current_month or 'not started'}")
+    if not type1_done and type1_last_day:
         yesterday = pendulum.yesterday().to_date_string()
-        remaining = (pendulum.parse(yesterday) - pendulum.parse(last_day)).days
-        print(f"  Days remaining: ~{remaining}")
-        runs_needed = remaining / BACKFILL_MAX_SEARCHES
-        print(f"  Backfill runs:  ~{runs_needed:.0f} more runs needed")
-    print("=" * 50 + "\n")
+        remaining = (pendulum.parse(yesterday) - pendulum.parse(type1_last_day)).days
+        runs_needed = remaining / TYPE1_MAX_SEARCHES
+        print(f"  Type I remaining:   ~{remaining} days (~{runs_needed:.0f} runs)")
+    print("=" * 60 + "\n")
 
 
 def query(sql: str):
@@ -392,6 +641,8 @@ COMMANDS = {
     "setup": setup,
     "daily": daily,
     "backfill": backfill,
+    "backfill-popular": backfill_popular,
+    "backfill-random": backfill_random,
     "init-tables": init_tables,
     "scrape-agents": run_tracked("scrape-agents")(scrape_and_load),
     "scrape-banners": run_tracked("scrape-banners")(scrape_banners),

@@ -40,7 +40,8 @@ TABLE_DDL = {
             ingested_date DATE,
             latest_view_count BIGINT,
             latest_like_count BIGINT,
-            latest_comment_count BIGINT
+            latest_comment_count BIGINT,
+            discovery_type VARCHAR DEFAULT 'popular'
         )
     """,
     "dim_channel": """
@@ -132,56 +133,6 @@ def init_tables():
         for name, ddl in TABLE_DDL.items():
             con.execute(ddl)
             logger.info(f"Ensured table exists: {name}")
-        _ensure_bridge_video_agent_schema(con)
-        _ensure_dim_video_schema(con)
-
-
-def _ensure_bridge_video_agent_schema(con):
-    """Add attribution_weight column to bridge_video_agent if missing."""
-    try:
-        columns = con.execute("DESCRIBE bridge_video_agent").fetchall()
-        column_names = [col[0] for col in columns]
-    except Exception:
-        return
-
-    if "attribution_weight" not in column_names:
-        con.execute(
-            "ALTER TABLE bridge_video_agent ADD COLUMN attribution_weight REAL DEFAULT 0.0"
-        )
-        logger.info("Added attribution_weight column to bridge_video_agent")
-
-
-def _ensure_dim_video_schema(con):
-    """Add latest_view_count, latest_like_count, latest_comment_count to dim_video if missing."""
-    try:
-        columns = con.execute("DESCRIBE dim_video").fetchall()
-        column_names = [col[0] for col in columns]
-    except Exception:
-        return
-
-    for col_name, col_type in [
-        ("latest_view_count", "BIGINT"),
-        ("latest_like_count", "BIGINT"),
-        ("latest_comment_count", "BIGINT"),
-    ]:
-        if col_name not in column_names:
-            con.execute(
-                f"ALTER TABLE dim_video ADD COLUMN {col_name} {col_type}"
-            )
-            logger.info(f"Added {col_name} column to dim_video")
-
-
-def ensure_dim_patch_schema(con):
-    try:
-        columns = con.execute("DESCRIBE dim_patch").fetchall()
-        column_names = [col[0] for col in columns]
-    except Exception:
-        return
-
-    if "agent_name" not in column_names:
-        con.execute("DROP TABLE dim_patch")
-        con.execute(TABLE_DDL["dim_patch"])
-        logger.info("Recreated dim_patch with v2 schema (version+agent_name PK)")
 
 
 def get_pipeline_info(key: str, default: str | None = None) -> str | None:
@@ -348,7 +299,7 @@ def _channel_stats_to_df(items: list[dict]) -> pd.DataFrame:
 
 
 
-def insert_discovered_videos(con, df: pd.DataFrame):
+def insert_discovered_videos(con, df: pd.DataFrame, discovery_type: str = "popular"):
     if df.empty:
         return
 
@@ -357,12 +308,12 @@ def insert_discovered_videos(con, df: pd.DataFrame):
 
     con.execute(
         """
-        INSERT INTO dim_video (video_id, title, description, channel_id, published_at, ingested_date)
-        SELECT video_id, title, description, channel_id, published_at, ?
+        INSERT INTO dim_video (video_id, title, description, channel_id, published_at, ingested_date, discovery_type)
+        SELECT video_id, title, description, channel_id, published_at, ?, ?
         FROM tmp_video_search
         ON CONFLICT (video_id) DO NOTHING
         """,
-        [today],
+        [today, discovery_type],
     )
     con.execute(
         """
@@ -547,7 +498,8 @@ def build_fact_agent_daily(con, snapshot_date: str | None = None):
             [snapshot_date],
         )
 
-    con.execute(f"""
+    con.execute(
+        f"""
         INSERT INTO fact_agent_daily
             (agent_name, snapshot_date,
              attributed_views, attributed_likes, attributed_comments, video_count)
@@ -561,9 +513,11 @@ def build_fact_agent_daily(con, snapshot_date: str | None = None):
         FROM bridge_video_agent AS b
         JOIN fact_video_daily   AS f
           ON b.video_id = f.video_id
-        {'WHERE f.snapshot_date = ?' if snapshot_date else ''}
+        {"WHERE f.snapshot_date = ?" if snapshot_date else ""}
         GROUP BY b.agent_name, f.snapshot_date
-    """, [snapshot_date] if snapshot_date else [])
+    """,
+        [snapshot_date] if snapshot_date else [],
+    )
 
     row_count = con.execute("SELECT COUNT(*) FROM fact_agent_daily").fetchone()[0]
     logger.info(
