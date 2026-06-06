@@ -68,7 +68,10 @@ def _compute_confidence(
         if any(_word_match(tag, alias) for tag in tags):
             tag_matched_agents.add(agent)
 
-    tag_multiplier = 1.0 / (1 + math.log(len(tag_matched_agents)))
+    num_tag_agents = len(tag_matched_agents)
+    tag_multiplier = (
+        1.0 if num_tag_agents <= 1 else 1.0 / (1 + math.log(num_tag_agents))
+    )
 
     for _, row in aliases_df.iterrows():
         alias = normalize(str(row["alias"]))
