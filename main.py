@@ -10,7 +10,6 @@ Usage:
     uv run main.py scrape-banners     Scrape banner schedule from game8.co
     uv run main.py enrich-videos      Enrich video metadata
     uv run main.py enrich-channels    Enrich channel metadata
-    uv run main.py score              Score all unscored videos
     uv run main.py match              Build video-agent associations
     uv run main.py build-agent-daily  Rebuild fact_agent_daily aggregates
     uv run main.py query <sql>        Run SQL queries in the warehouse
@@ -25,7 +24,6 @@ import time
 import pendulum
 from pathlib import Path
 import shutil
-from src.scoring import load_scoring_config, score_existing_videos, score_videos
 from src.utils import DB_PATH, get_logger, get_db, chunk_list
 from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
 from src.warehouse import (
@@ -47,11 +45,10 @@ from src.warehouse import (
     build_fact_agent_daily,
 )
 from src.agents import scrape_and_load
-from src.matching import match_videos_to_agents
+from src.matching import match_all_videos
 from src.banners import scrape_banners
 
 logger = get_logger("main")
-config = load_scoring_config()
 
 BACKFILL_TOPIC = "Zenless Zone Zero"
 BACKFILL_START_DATE = "2024-01-01"
@@ -85,14 +82,12 @@ def run_tracked(pipeline_name: str):
 
 
 def _ingest_search_results(con, items, discovery_type: str) -> int:
-    """Score search items, filter relevant, insert to warehouse. Returns count of new relevant videos."""
+    """Convert search items to DataFrame and insert to warehouse. Returns count of new videos."""
     if not items:
         return 0
     df = _video_search_to_df(items)
-    df = score_videos(df, config)
-    relevant_df = df[df["is_relevant"]].copy()
-    insert_discovered_videos(con, relevant_df, discovery_type=discovery_type)
-    return len(relevant_df)
+    new_ids = insert_discovered_videos(con, df, discovery_type=discovery_type)
+    return len(new_ids) if new_ids else 0
 
 
 def setup():
@@ -161,7 +156,7 @@ def _run_backfill_type1():
 
             logger.info(
                 f"[Type I] {current_date.to_date_string()} | "
-                f"{len(items)} raw -> {n_new} relevant | "
+                f"{len(items)} raw -> {n_new} new | "
                 f"searches: {searches_used}/{TYPE1_MAX_SEARCHES}"
             )
 
@@ -281,7 +276,7 @@ def _run_backfill_type2():
                 logger.info(
                     f"[Type II] {cursor.format('YYYY-MM')} search #{searches_done_in_month}/{target_count} | "
                     f"before={rand_ts.format('YYYY-MM-DD HH:mm')} | "
-                    f"{len(items)} raw -> {n_new} relevant | "
+                    f"{len(items)} raw -> {n_new} new | "
                     f"total: {total_searches}/{TYPE2_MAX_SEARCHES}"
                 )
 
@@ -342,8 +337,6 @@ def backfill():
         enrich_videos()
         enrich_channels()
 
-        match_videos_to_agents()
-
         with get_db() as con:
             update_latest_video_counts(con)
             build_fact_agent_daily(con)
@@ -365,7 +358,6 @@ def backfill_popular():
         _run_backfill_type1()
         enrich_videos()
         enrich_channels()
-        match_videos_to_agents()
         with get_db() as con:
             update_latest_video_counts(con)
             build_fact_agent_daily(con)
@@ -386,7 +378,6 @@ def backfill_random():
         _run_backfill_type2()
         enrich_videos()
         enrich_channels()
-        match_videos_to_agents()
         with get_db() as con:
             update_latest_video_counts(con)
             build_fact_agent_daily(con)
@@ -423,8 +414,6 @@ def daily():
 
         enrich_videos()
         enrich_channels()
-
-        match_videos_to_agents()
 
         today = pendulum.now().to_date_string()
         with get_db() as con:
@@ -465,7 +454,7 @@ def _run_daily_discover():
             )
             n_new = _ingest_search_results(con, items, discovery_type="popular")
             total_new += n_new
-            logger.info(f"[Daily Type I] {len(items)} raw -> {n_new} relevant")
+            logger.info(f"[Daily Type I] {len(items)} raw -> {n_new} new")
         else:
             logger.info("[Daily Type I] skipped — Type I backfill not complete")
 
@@ -493,13 +482,13 @@ def _run_daily_discover():
             )
             n_new = _ingest_search_results(con, items, discovery_type="random")
             total_new += n_new
-            logger.info(f"[Daily Type II] {len(items)} raw -> {n_new} relevant")
+            logger.info(f"[Daily Type II] {len(items)} raw -> {n_new} new")
         else:
             logger.info(f"[Daily Type II] skipped — day={now.day} (runs when day%3==0)")
     else:
         logger.info("[Daily Type II] skipped — Type II backfill not complete")
 
-    logger.info(f"Daily discovery: {total_new} new relevant videos")
+    logger.info(f"Daily discovery: {total_new} new videos")
 
 
 def enrich_videos():
@@ -534,13 +523,6 @@ def enrich_channels():
     logger.info("Channel enrichment complete")
 
 
-def score_cmd():
-    """Re-score all unscored videos in the warehouse."""
-    with get_db() as con:
-        count = score_existing_videos(con)
-    logger.info(f"Scored {count} videos")
-
-
 def status():
     """Show current pipeline status."""
     type1_done = get_pipeline_info("type1_completed", "false") == "true"
@@ -548,22 +530,19 @@ def status():
     type1_last_day = get_pipeline_info("type1_last_day")
     type2_current_month = get_pipeline_info("type2_current_month")
 
-    n_videos = n_relevant = n_channels = n_agents = 0
+    n_videos = n_channels = n_agents = 0
     with get_db() as con:
         try:
             n_videos = con.execute("SELECT COUNT(*) FROM dim_video").fetchone()[0]
-            n_relevant = con.execute(
-                "SELECT COUNT(*) FROM dim_video WHERE is_relevant"
-            ).fetchone()[0]
             n_channels = con.execute("SELECT COUNT(*) FROM dim_channel").fetchone()[0]
             n_agents = con.execute("SELECT COUNT(*) FROM dim_agent").fetchone()[0]
         except Exception:
-            n_videos = n_relevant = n_channels = n_agents = 0
+            n_videos = n_channels = n_agents = 0
 
     print("\n" + "=" * 60)
     print("  PIPELINE STATUS")
     print("=" * 60)
-    print(f"  Videos:             {n_videos} ({n_relevant} relevant)")
+    print(f"  Videos:             {n_videos}")
     print(f"  Channels:           {n_channels}")
     print(f"  Agents:             {n_agents}")
     print(f"  Type I (popular):   {'DONE' if type1_done else 'IN PROGRESS'}")
@@ -633,11 +612,10 @@ COMMANDS = {
     "scrape-banners": run_tracked("scrape-banners")(scrape_banners),
     "enrich-videos": run_tracked("enrich-videos")(enrich_videos),
     "enrich-channels": run_tracked("enrich-channels")(enrich_channels),
-    "match": run_tracked("match")(match_videos_to_agents),
+    "match": run_tracked("match")(match_all_videos),
     "build-agent-daily": run_tracked("build-agent-daily")(build_agent_daily_cmd),
     "status": status,
     "publish": publish,
-    "score": run_tracked("score")(score_cmd),
 }
 
 

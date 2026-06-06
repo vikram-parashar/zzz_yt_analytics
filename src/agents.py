@@ -296,6 +296,7 @@ def upsert_aliases(con, alias_map: dict):
     for agent_name in agent_names:
         aliases = alias_map.get(agent_name) or []
         if agent_name not in aliases:
+            logger.warning(f"{agent_name} does not have a alias")
             aliases.append(agent_name)
         aliases_list.extend([{"name": agent_name, "alias": alias} for alias in aliases])
 

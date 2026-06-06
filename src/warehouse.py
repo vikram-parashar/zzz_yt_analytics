@@ -35,8 +35,6 @@ TABLE_DDL = {
             thumbnail VARCHAR,
             tags VARCHAR[],
             duration_seconds INT,
-            relevance_score REAL DEFAULT 0.0,
-            is_relevant BOOLEAN DEFAULT false,
             ingested_date DATE,
             latest_view_count BIGINT,
             latest_like_count BIGINT,
@@ -160,7 +158,6 @@ def set_pipeline_info(key: str, value: str):
 
 
 def start_pipeline_run(pipeline: str) -> int:
-    """Insert a new pipeline_runs row with status='running' and return its id."""
     now = pendulum.now()
     with get_db() as con:
         run_id = con.execute(
@@ -176,7 +173,6 @@ def start_pipeline_run(pipeline: str) -> int:
 
 
 def finish_pipeline_run(run_id: int, rows_affected: int = 0, error: str | None = None):
-    """Mark a pipeline run as completed (or failed)."""
     status = "failed" if error else "completed"
     now = pendulum.now()
     with get_db() as con:
@@ -192,7 +188,6 @@ def finish_pipeline_run(run_id: int, rows_affected: int = 0, error: str | None =
 
 
 def did_pipeline_run_today(pipeline: str) -> bool:
-    """Check whether a given pipeline has a successful run for today."""
     today = pendulum.now().to_date_string()
     with get_db() as con:
         result = con.execute(
@@ -301,10 +296,13 @@ def _channel_stats_to_df(items: list[dict]) -> pd.DataFrame:
 
 def insert_discovered_videos(con, df: pd.DataFrame, discovery_type: str = "popular"):
     if df.empty:
-        return
+        return []
 
     today = pendulum.now().to_date_string()
     con.register("tmp_video_search", df)
+
+    existing = con.sql("SELECT video_id FROM dim_video").df()["video_id"].tolist()
+    new_ids = [vid for vid in df["video_id"].tolist() if vid not in existing]
 
     con.execute(
         """
@@ -325,12 +323,21 @@ def insert_discovered_videos(con, df: pd.DataFrame, discovery_type: str = "popul
         [today],
     )
 
+    if new_ids:
+        from src.matching import match_videos
+
+        match_videos(con, video_ids=new_ids)
+
+    return new_ids
+
 
 def upsert_video_details(con, df: pd.DataFrame):
     if df.empty:
         return
 
     con.register("tmp_video_stats", df)
+
+    updated_ids = df["video_id"].tolist()
 
     con.execute("""
         UPDATE dim_video AS v
@@ -360,6 +367,10 @@ def upsert_video_details(con, df: pd.DataFrame):
         FROM tmp_video_stats AS t
         WHERE dv.video_id = t.video_id
     """)
+
+    from src.matching import match_videos
+
+    match_videos(con, video_ids=updated_ids)
 
 
 def upsert_channel_details(con, df: pd.DataFrame):
@@ -400,7 +411,6 @@ def get_video_ids(con) -> list[str]:
 
 
 def get_all_channel_ids(con) -> list[str]:
-    """Get ALL channel IDs for daily fact snapshots."""
     try:
         df = con.sql("SELECT channel_id FROM dim_channel").to_df()
         return list(df["channel_id"])
@@ -417,29 +427,9 @@ def get_agent_names(con) -> list[str]:
         return []
 
 
-def update_video_scores(con, scored_df: pd.DataFrame):
-    """Update relevance_score and is_relevant for videos based on scoring."""
-    if scored_df.empty:
-        return
-    con.register("score_tmp", scored_df)
-    con.execute("""
-        UPDATE dim_video AS v
-        SET relevance_score = s.relevance_score,
-            is_relevant = s.is_relevant
-        FROM score_tmp AS s
-        WHERE v.video_id = s.video_id
-    """)
-
-
 
 
 def update_attribution_weights(con):
-    """Recalculate attribution_weight for every row in bridge_video_agent.
-
-    attribution_weight = confidence / total_conf
-    where total_conf = SUM(confidence) for all agents of that video.
-    A video with a single matched agent gets weight 1.0.
-    """
     con.execute("""
         UPDATE bridge_video_agent AS b
         SET attribution_weight = b.confidence / total_conf
@@ -456,11 +446,6 @@ def update_attribution_weights(con):
 
 
 def update_latest_video_counts(con):
-    """Denormalise the latest snapshot counts from fact_video_daily into dim_video.
-
-    For each video, picks the row with the most recent snapshot_date and
-    writes its view/like/comment counts into dim_video.latest_* columns.
-    """
     con.execute("""
         UPDATE dim_video AS dv
         SET latest_view_count = latest.view_count,
@@ -481,17 +466,6 @@ def update_latest_video_counts(con):
 
 
 def build_fact_agent_daily(con, snapshot_date: str | None = None):
-    """Populate fact_agent_daily from bridge_video_agent × fact_video_daily.
-
-    For each (agent_name, snapshot_date):
-      - attributed_views    = SUM(attribution_weight * view_count)
-      - attributed_likes    = SUM(attribution_weight * like_count)
-      - attributed_comments = SUM(attribution_weight * comment_count)
-      - video_count         = COUNT(DISTINCT video_id)
-
-    If snapshot_date is provided, only rows for that date are (re-)computed.
-    Otherwise the entire table is rebuilt.
-    """
     if snapshot_date:
         con.execute(
             "DELETE FROM fact_agent_daily WHERE snapshot_date = ?",

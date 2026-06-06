@@ -7,7 +7,6 @@ import requests
 from bs4 import BeautifulSoup
 
 from src.utils import get_db, get_logger
-from src.warehouse import ensure_dim_patch_schema, TABLE_DDL
 
 logger = get_logger(__name__)
 
@@ -186,8 +185,6 @@ def upsert_banners(con, banners: list[dict]):
     if not banners:
         logger.info("banners.upsert: No banners to write")
         return
-    ensure_dim_patch_schema(con)
-    con.execute(TABLE_DDL["dim_patch"])
     df = pd.DataFrame(banners)
     con.register("banner_tmp", df)
     try:
