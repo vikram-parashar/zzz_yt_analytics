@@ -471,34 +471,17 @@ def _run_daily_discover():
 
         time.sleep(SEARCH_DELAY_SECONDS)
 
-        if type2_done:
+    if type2_done:
+        if now.day % 3 == 0:
             published_before = now.to_rfc3339_string()
-
-            try:
-                max_published = con.execute(
-                    "SELECT MAX(published_at) FROM dim_video"
-                ).fetchone()[0]
-            except Exception:
-                max_published = None
-
-            if max_published:
-                if isinstance(max_published, str):
-                    lower_bound = pendulum.parse(max_published)
-                else:
-                    lower_bound = pendulum.instance(max_published)
-
-                delta_seconds = int((now - lower_bound).total_seconds())
-                if delta_seconds > 0:
-                    random_offset = random.randint(0, delta_seconds)
-                    random_ts = lower_bound.add(seconds=random_offset)
-                    published_after = random_ts.to_rfc3339_string()
-                else:
-                    published_after = now.subtract(hours=27).to_rfc3339_string()
-            else:
-                published_after = now.subtract(hours=27).to_rfc3339_string()
+            lower_bound = now.subtract(days=3, hours=3)
+            delta_seconds = int((now - lower_bound).total_seconds())
+            random_offset = random.randint(0, max(delta_seconds - 1, 0))
+            random_ts = lower_bound.add(seconds=random_offset)
+            published_after = random_ts.to_rfc3339_string()
 
             logger.info(
-                f"[Daily Type II] order=date | "
+                f"[Daily Type II] order=date | day={now.day} (3-day cycle) | "
                 f"after={published_after} | before={published_before}"
             )
 
@@ -512,7 +495,9 @@ def _run_daily_discover():
             total_new += n_new
             logger.info(f"[Daily Type II] {len(items)} raw -> {n_new} relevant")
         else:
-            logger.info("[Daily Type II] skipped — Type II backfill not complete")
+            logger.info(f"[Daily Type II] skipped — day={now.day} (runs when day%3==0)")
+    else:
+        logger.info("[Daily Type II] skipped — Type II backfill not complete")
 
     logger.info(f"Daily discovery: {total_new} new relevant videos")
 
