@@ -17,7 +17,10 @@ HTTP_RETRY_DELAY = 5
 
 _VERSION_DATE_RE = re.compile(
     r"Version\s+([\d.]+)\s*:\s*"
-    r"([A-Z][a-z]+ \d{1,2},? \d{4})\s*[–\-]\s*([A-Z][a-z]+ \d{1,2},? \d{4})"
+    r"([A-Z][a-z]+ \d{1,2},? \d{4})\s*[–\-]\s*"
+    r"([A-Z][a-z]+ \d{1,2},? \d{4})"
+    r"(?:\s*\((Phase\s+\d+)\))?",
+    re.I,
 )
 _VERSION_RE = re.compile(r"Version\s+([\d.]+)")
 
@@ -82,22 +85,6 @@ def _fetch_with_retry(
                 raise
 
 
-def _parse_version_header(text):
-    m = _VERSION_DATE_RE.search(text)
-    if m:
-        version = m.group(1)
-        try:
-            start_date = datetime.strptime(m.group(2), "%B %d, %Y").date().isoformat()
-            end_date = datetime.strptime(m.group(3), "%B %d, %Y").date().isoformat()
-            return version, start_date, end_date
-        except Exception:
-            return version, None, None
-    m = _VERSION_RE.search(text)
-    if m:
-        return m.group(1), None, None
-    return None, None, None
-
-
 _NAME_SUFFIXES = (
     " First Rerun",
     " Rerun Banner",
@@ -137,31 +124,116 @@ def _parse_table(table) -> list[dict]:
         first = cells[0]
 
         if first.name == "th" and first.get("colspan"):
-            version, start, end = _parse_version_header(first.get_text(strip=True))
-            if version:
-                current_version = version
-                current_start = start
-                current_end = end
+            (current_version, current_start, current_end) = _parse_version_header(
+                first.get_text(" ", strip=True)
+            )
             continue
 
         if first.name == "td":
             continue
 
         if first.name == "th" and not first.get("colspan") and current_version:
-            raw_name = first.get_text(strip=True)
-            if not raw_name:
-                continue
+            raw_name = first.get_text(" ", strip=True)
+
             if any(kw in raw_name.lower() for kw in _SKIP_KEYWORDS):
                 continue
             agent_name = _clean_agent_name(raw_name)
-            if not agent_name:
-                continue
+
+            if current_version and agent_name and current_start and current_end:
+                banners.append(
+                    {
+                        "version": current_version,
+                        "agent_name": agent_name,
+                        "banner_start": current_start,
+                        "banner_end": current_end,
+                    }
+                )
+
+    return banners
+
+
+def _parse_version_header(text):
+    m = _VERSION_DATE_RE.search(text)
+    if m:
+        version = m.group(1)
+
+        try:
+            start_date = datetime.strptime(m.group(2), "%B %d, %Y").date().isoformat()
+
+            end_date = datetime.strptime(m.group(3), "%B %d, %Y").date().isoformat()
+
+            return version, start_date, end_date
+
+        except Exception:
+            return version, None, None
+
+    m = _VERSION_RE.search(text)
+    if m:
+        return m.group(1), None, None
+
+    return None, None, None
+
+
+def _history_tables(soup):
+    history_h2 = None
+
+    for h2 in soup.find_all("h2"):
+        text = h2.get_text(" ", strip=True).lower()
+
+        if "zzz banner history" in text:
+            history_h2 = h2
+            break
+
+    if not history_h2:
+        return []
+
+    tables = []
+
+    node = history_h2.find_next_sibling()
+
+    while node:
+        if getattr(node, "name", None) == "h2":
+            break
+
+        tables.extend(node.find_all("table"))
+
+        node = node.find_next_sibling()
+
+    return tables
+
+
+def _parse_current_banner_table(table) -> list[dict]:
+    rows = table.find_all("tr")
+
+    if len(rows) < 2:
+        return []
+
+    header_text = rows[0].get_text(" ", strip=True)
+
+    version, start, end = _parse_version_header(header_text)
+
+    if not version:
+        return []
+
+    name_cells = rows[1].find_all("th")
+
+    banners = []
+
+    for cell in name_cells:
+        raw_name = cell.get_text(" ", strip=True)
+
+        if not raw_name:
+            continue
+
+        agent_name = _clean_agent_name(raw_name)
+
+        if version and agent_name and start and end:
             banners.append(
                 {
-                    "version": current_version,
+                    "version": version,
                     "agent_name": agent_name,
-                    "banner_start": current_start,
-                    "banner_end": current_end,
+                    "banner_start": start,
+                    "banner_end": end,
                 }
             )
 
@@ -171,12 +243,25 @@ def _parse_table(table) -> list[dict]:
 def parse_banners(soup: BeautifulSoup) -> list[dict]:
     banners = []
     seen = set()
-    for table in soup.find_all("table"):
-        for b in _parse_table(table):
+
+    first_table = soup.find("table")
+
+    if first_table:
+        for b in _parse_current_banner_table(first_table):
             key = (b["version"], b["agent_name"])
+
             if key not in seen:
                 seen.add(key)
                 banners.append(b)
+
+    for table in _history_tables(soup):
+        for b in _parse_table(table):
+            key = (b["version"], b["agent_name"])
+
+            if key not in seen:
+                seen.add(key)
+                banners.append(b)
+
     logger.info("banners.parse.done parsed=%d", len(banners))
     return banners
 
