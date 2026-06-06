@@ -460,33 +460,35 @@ def _run_daily_discover():
 
         time.sleep(SEARCH_DELAY_SECONDS)
 
-    if type2_done:
-        if now.day % 3 == 0:
-            published_before = now.to_rfc3339_string()
-            lower_bound = now.subtract(days=3, hours=3)
-            delta_seconds = int((now - lower_bound).total_seconds())
-            random_offset = random.randint(0, max(delta_seconds - 1, 0))
-            random_ts = lower_bound.add(seconds=random_offset)
-            published_after = random_ts.to_rfc3339_string()
+        if type2_done:
+            if now.day % 3 == 0:
+                published_before = now.to_rfc3339_string()
+                lower_bound = now.subtract(days=3, hours=3)
+                delta_seconds = int((now - lower_bound).total_seconds())
+                random_offset = random.randint(0, max(delta_seconds - 1, 0))
+                random_ts = lower_bound.add(seconds=random_offset)
+                published_after = random_ts.to_rfc3339_string()
 
-            logger.info(
-                f"[Daily Type II] order=date | day={now.day} (3-day cycle) | "
-                f"after={published_after} | before={published_before}"
-            )
+                logger.info(
+                    f"[Daily Type II] order=date | day={now.day} (3-day cycle) | "
+                    f"after={published_after} | before={published_before}"
+                )
 
-            items = search_videos(
-                query=BACKFILL_TOPIC,
-                published_after=published_after,
-                published_before=published_before,
-                order="date",
-            )
-            n_new = _ingest_search_results(con, items, discovery_type="random")
-            total_new += n_new
-            logger.info(f"[Daily Type II] {len(items)} raw -> {n_new} new")
+                items = search_videos(
+                    query=BACKFILL_TOPIC,
+                    published_after=published_after,
+                    published_before=published_before,
+                    order="date",
+                )
+                n_new = _ingest_search_results(con, items, discovery_type="random")
+                total_new += n_new
+                logger.info(f"[Daily Type II] {len(items)} raw -> {n_new} new")
+            else:
+                logger.info(
+                    f"[Daily Type II] skipped — day={now.day} (runs when day%3==0)"
+                )
         else:
-            logger.info(f"[Daily Type II] skipped — day={now.day} (runs when day%3==0)")
-    else:
-        logger.info("[Daily Type II] skipped — Type II backfill not complete")
+            logger.info("[Daily Type II] skipped — Type II backfill not complete")
 
     logger.info(f"Daily discovery: {total_new} new videos")
 
