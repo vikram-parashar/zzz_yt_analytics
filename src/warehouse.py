@@ -471,6 +471,8 @@ def build_fact_agent_daily(con, snapshot_date: str | None = None):
             "DELETE FROM fact_agent_daily WHERE snapshot_date = ?",
             [snapshot_date],
         )
+    else:
+        con.execute("DELETE FROM fact_agent_daily")
 
     con.execute(
         f"""
