@@ -262,7 +262,6 @@ def parse_banners(soup: BeautifulSoup) -> list[dict]:
                 seen.add(key)
                 banners.append(b)
 
-    logger.info("banners.parse.done parsed=%d", len(banners))
     return banners
 
 
@@ -291,10 +290,8 @@ def upsert_banners(con, banners: list[dict]):
 
 
 def scrape_banners():
-    logger.info("banners.start")
     try:
         session = _make_session()
-        logger.info("banners.fetch.start url=%s", BANNER_URL)
         start = time.perf_counter()
         resp = _fetch_with_retry(session, BANNER_URL)
         html = resp.text
@@ -310,12 +307,9 @@ def scrape_banners():
         if not banners:
             logger.warning("banners.no_banners_parsed")
             return
-        logger.info("banners.parsed count=%d", len(banners))
         with get_db() as con:
             upsert_banners(con, banners)
         logger.info("banners.success")
     except Exception:
         logger.exception("banners.failed")
         raise
-    finally:
-        logger.info("banners.end")

@@ -130,7 +130,6 @@ def init_tables():
     with get_db() as con:
         for name, ddl in TABLE_DDL.items():
             con.execute(ddl)
-            logger.info(f"Ensured table exists: {name}")
 
 
 def get_pipeline_info(key: str, default: str | None = None) -> str | None:
@@ -154,7 +153,6 @@ def set_pipeline_info(key: str, value: str):
             """,
             [key, value],
         )
-    logger.info(f"pipeline_info | {key} = {value}")
 
 
 def start_pipeline_run(pipeline: str) -> int:
@@ -168,7 +166,6 @@ def start_pipeline_run(pipeline: str) -> int:
             """,
             [pipeline, now.to_date_string(), now.to_datetime_string()],
         ).fetchone()[0]
-    logger.info(f"pipeline_runs | started | id={run_id} pipeline={pipeline}")
     return run_id
 
 
@@ -442,7 +439,6 @@ def update_attribution_weights(con):
           AND totals.total_conf > 0
     """)
     row_count = con.execute("SELECT COUNT(*) FROM bridge_video_agent").fetchone()[0]
-    logger.info(f"Updated attribution_weight for {row_count} bridge rows")
 
 
 def update_latest_video_counts(con):
@@ -462,7 +458,6 @@ def update_latest_video_counts(con):
     row_count = con.execute(
         "SELECT COUNT(*) FROM dim_video WHERE latest_view_count IS NOT NULL"
     ).fetchone()[0]
-    logger.info(f"Updated latest counts for {row_count} videos in dim_video")
 
 
 def build_fact_agent_daily(con, snapshot_date: str | None = None):

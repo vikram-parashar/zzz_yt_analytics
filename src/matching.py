@@ -150,8 +150,6 @@ def match_videos(con, video_ids: list[str] | None = None):
         logger.info("No videos to match")
         return
 
-    logger.info(f"Matching {len(videos_df)} videos against {len(aliases_df)} aliases")
-
     results = []
 
     for _, video in videos_df.iterrows():

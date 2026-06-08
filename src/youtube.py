@@ -47,11 +47,6 @@ def search_videos(
     published_before: str,
     order: str = "date",
 ) -> list[dict]:
-    logger.info(
-        f"Searching videos | query='{query}' | order={order} | "
-        f"after={published_after} | before={published_before}"
-    )
-
     params = {
         "q": query,
         "part": "snippet",
@@ -113,7 +108,6 @@ def fetch_video_stats(video_ids: list[str]) -> list[dict]:
             .execute()
         )
         items = res.get("items", [])
-        logger.info(f"Fetched stats for {len(items)} videos")
         return items
     except HttpError as e:
         logger.error(f"YouTube video stats API error: {e}")
@@ -134,7 +128,6 @@ def fetch_channel_stats(channel_ids: list[str]) -> list[dict]:
             .execute()
         )
         items = res.get("items", [])
-        logger.info(f"Fetched stats for {len(items)} channels")
         return items
     except HttpError as e:
         logger.error(f"YouTube channel stats API error: {e}")

@@ -75,7 +75,6 @@ def _fetch_with_retry(
 
 
 def scrape_wiki(session: requests.Session) -> str:
-    logger.info("scrape.start url=%s", WIKI_URL)
     start = time.perf_counter()
 
     resp = _fetch_with_retry(session, WIKI_URL)
@@ -235,14 +234,10 @@ def _parse_upcoming_tables(soup: BeautifulSoup, existing_names: set[str]) -> lis
 
 
 def parse_agents(soup: BeautifulSoup) -> list[dict]:
-    logger.info("parse.start")
-
     playable = _parse_playable_tables(soup)
-    logger.info("parse.playable count=%d", len(playable))
 
     existing_names = {a["name"] for a in playable}
     upcoming = _parse_upcoming_tables(soup, existing_names)
-    logger.info("parse.upcoming count=%d (skipped duplicates)", len(upcoming))
 
     agents = playable + upcoming
     n_with_faction = sum(1 for a in agents if a.get("faction"))
@@ -256,8 +251,6 @@ def parse_agents(soup: BeautifulSoup) -> list[dict]:
 
 
 def upsert_agent(con, agents: list[dict]):
-    logger.info("db.agent_upsert.start rows=%d", len(agents))
-
     df = pd.DataFrame(agents)
     for col in ["href"]:
         if col in df.columns:
@@ -284,12 +277,8 @@ def upsert_agent(con, agents: list[dict]):
         logger.exception("db.agent_upsert.failed")
         raise
 
-    logger.info("db.agent_upsert.done")
-
 
 def upsert_aliases(con, alias_map: dict):
-    logger.info("db.alias_upsert.start")
-
     agent_names = get_agent_names(con)
 
     aliases_list = []
@@ -316,12 +305,8 @@ def upsert_aliases(con, alias_map: dict):
         logger.exception("db.alias_upsert.failed")
         raise
 
-    logger.info("db.alias_upsert.done")
-
 
 def scrape_and_load():
-    logger.info("agents.start")
-
     try:
         with open(ALIASES_PATH) as f:
             alias_map = json.load(f)
@@ -348,6 +333,3 @@ def scrape_and_load():
     except Exception:
         logger.exception("agents.failed")
         raise
-
-    finally:
-        logger.info("agents.end")

@@ -92,15 +92,9 @@ def _ingest_search_results(con, items, discovery_type: str) -> int:
 
 def setup():
     """One-time setup: init tables + scrape agents."""
-    logger.info("=" * 50)
-    logger.info("SETUP PIPELINE")
-    logger.info("=" * 50)
-
     init_tables()
     scrape_and_load()
     scrape_banners()
-
-    logger.info("Setup complete — warehouse is ready")
 
 
 def _run_backfill_type1():
@@ -117,10 +111,8 @@ def _run_backfill_type1():
     last_day = get_pipeline_info("type1_last_day")
     if last_day is None:
         current_date = pendulum.parse(BACKFILL_START_DATE)
-        logger.info(f"Type I backfill starting from {BACKFILL_START_DATE}")
     else:
         current_date = pendulum.parse(last_day).add(days=1)
-        logger.info(f"Type I backfill resuming from {current_date.to_date_string()}")
 
     yesterday = pendulum.yesterday()
     total_new = 0
@@ -207,13 +199,9 @@ def _run_backfill_type2():
         year, month = saved_month.split("-")
         cursor = pendulum.datetime(int(year), int(month), 1, 0, 0, 0)
         searches_done_in_month = int(saved_done) if saved_done else 0
-        logger.info(
-            f"Type II resuming from {saved_month} with {searches_done_in_month} searches already done"
-        )
     else:
         cursor = pendulum.parse(BACKFILL_START_DATE).start_of("month")
         searches_done_in_month = 0
-        logger.info(f"Type II starting from {BACKFILL_START_DATE}")
 
     total_new = 0
     total_searches = 0
@@ -232,10 +220,6 @@ def _run_backfill_type2():
                 if is_current_month:
                     set_pipeline_info("type2_current_month", cursor.format("YYYY-MM"))
                     set_pipeline_info("type2_searches_done", str(target_count))
-                    logger.info(
-                        f"Type II current month {cursor.format('YYYY-MM')} done. "
-                        f"Total new: {total_new}, searches: {total_searches}"
-                    )
                     return
 
                 cursor = cursor.add(months=1)
@@ -244,10 +228,6 @@ def _run_backfill_type2():
                     set_pipeline_info("type2_completed", "true")
                     set_pipeline_info("type2_current_month", cursor.format("YYYY-MM"))
                     set_pipeline_info("type2_searches_done", "0")
-                    logger.info(
-                        f"Type II: all complete months done. "
-                        f"Total new: {total_new}, searches: {total_searches}"
-                    )
                     return
                 continue
 
@@ -304,10 +284,6 @@ def _run_backfill_type2():
                 set_pipeline_info("type2_completed", "true")
                 set_pipeline_info("type2_current_month", cursor.format("YYYY-MM"))
                 set_pipeline_info("type2_searches_done", "0")
-                logger.info(
-                    f"Type II: all complete months done. "
-                    f"Total new: {total_new}, searches: {total_searches}"
-                )
                 return
 
 
@@ -323,15 +299,9 @@ def backfill():
     run_id = start_pipeline_run("backfill")
     try:
         if not type1_done:
-            logger.info("=" * 50)
-            logger.info("TYPE I BACKFILL (Popular / viewCount)")
-            logger.info("=" * 50)
             _run_backfill_type1()
 
         if not type2_done:
-            logger.info("=" * 50)
-            logger.info("TYPE II BACKFILL (Random / date)")
-            logger.info("=" * 50)
             _run_backfill_type2()
 
         enrich_videos()
@@ -401,10 +371,6 @@ def daily():
         logger.info("Daily pipeline already ran today — skipping")
         return
 
-    logger.info("=" * 50)
-    logger.info("DAILY PIPELINE")
-    logger.info("=" * 50)
-
     run_id = start_pipeline_run("daily")
     try:
         scrape_and_load()
@@ -441,11 +407,6 @@ def _run_daily_discover():
             published_after = now.subtract(hours=27).to_rfc3339_string()
             published_before = now.to_rfc3339_string()
 
-            logger.info(
-                f"[Daily Type I] order=viewCount | "
-                f"after={published_after} | before={published_before}"
-            )
-
             items = search_videos(
                 query=BACKFILL_TOPIC,
                 published_after=published_after,
@@ -468,11 +429,6 @@ def _run_daily_discover():
                 random_offset = random.randint(0, max(delta_seconds - 1, 0))
                 random_ts = lower_bound.add(seconds=random_offset)
                 published_after = random_ts.to_rfc3339_string()
-
-                logger.info(
-                    f"[Daily Type II] order=date | day={now.day} (3-day cycle) | "
-                    f"after={published_after} | before={published_before}"
-                )
 
                 items = search_videos(
                     query=BACKFILL_TOPIC,
@@ -506,8 +462,6 @@ def enrich_videos():
             df = _video_stats_to_df(items)
             upsert_video_details(con, df)
 
-    logger.info("Video enrichment complete")
-
 
 def enrich_channels():
     """Fetch channel details and daily stats for ALL known channels."""
@@ -521,8 +475,6 @@ def enrich_channels():
             items = fetch_channel_stats(chunk)
             df = _channel_stats_to_df(items)
             upsert_channel_details(con, df)
-
-    logger.info("Channel enrichment complete")
 
 
 def status():
@@ -573,7 +525,6 @@ def publish():
         con = duckdb.connect(str(DB_PATH))
         con.execute("CHECKPOINT")
         con.close()
-        logger.info("DuckDB WAL checkpointed")
     else:
         raise FileNotFoundError("warehouse.db not found — nothing to publish")
 
@@ -592,7 +543,6 @@ def publish():
     logger.info(
         f"Published warehouse snapshot -> {versioned.name} ({db_size_mb:.1f} MB)"
     )
-    logger.info("Published latest copy -> latest.db")
 
 
 def build_agent_daily_cmd():
@@ -600,7 +550,6 @@ def build_agent_daily_cmd():
     with get_db() as con:
         update_latest_video_counts(con)
         build_fact_agent_daily(con)
-    logger.info("Agent daily aggregation complete")
 
 
 COMMANDS = {
