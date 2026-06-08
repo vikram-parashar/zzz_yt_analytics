@@ -1,0 +1,51 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: dark --default, catppuccin;
+}
+
+/* Catppuccin Mocha overrides */
+[data-theme="catppuccin"] {
+  --c-rosewater: #f5e0dc;
+  --c-flamingo: #f2cdcd;
+  --c-pink: #f5c2e7;
+  --c-mauve: #cba6f7;
+  --c-red: #f38ba8;
+  --c-maroon: #eba0ac;
+  --c-peach: #fab387;
+  --c-yellow: #f9e2af;
+  --c-green: #a6e3a1;
+  --c-teal: #94e2d5;
+  --c-sky: #89dceb;
+  --c-sapphire: #74c7ec;
+  --c-blue: #89b4fa;
+  --c-lavender: #b4befe;
+  --c-text: #cdd6f4;
+  --c-subtext1: #bac2de;
+  --c-subtext0: #a6adc8;
+  --c-overlay2: #9399b2;
+  --c-overlay1: #7f849c;
+  --c-overlay0: #6c7086;
+  --c-surface2: #585b70;
+  --c-surface1: #45475a;
+  --c-surface0: #313244;
+  --c-base: #1e1e2e;
+  --c-mantle: #181825;
+  --c-crust: #11111b;
+
+  --color-base-100: var(--c-base);
+  --color-base-200: var(--c-mantle);
+  --color-base-300: var(--c-crust);
+  --color-base-content: var(--c-text);
+  --color-primary: var(--c-mauve);
+  --color-primary-content: var(--c-crust);
+  --color-secondary: var(--c-surface1);
+  --color-secondary-content: var(--c-text);
+  --color-accent: var(--c-sapphire);
+  --color-accent-content: var(--c-crust);
+  --color-neutral: var(--c-surface0);
+  --color-neutral-content: var(--c-text);
+  --color-success: var(--c-green);
+  --color-warning: var(--c-yellow);
+  --color-error: var(--c-red);
+  --color-info: var(--c-blue);
+}

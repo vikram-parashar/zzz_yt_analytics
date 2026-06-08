@@ -1,0 +1,11 @@
+COPY bridge_agent_alias FROM 'dashboard/public/data/bridge_agent_alias.parquet' (FORMAT 'parquet');
+COPY bridge_video_agent FROM 'dashboard/public/data/bridge_video_agent.parquet' (FORMAT 'parquet');
+COPY dim_agent FROM 'dashboard/public/data/dim_agent.parquet' (FORMAT 'parquet');
+COPY dim_channel FROM 'dashboard/public/data/dim_channel.parquet' (FORMAT 'parquet');
+COPY dim_patch FROM 'dashboard/public/data/dim_patch.parquet' (FORMAT 'parquet');
+COPY dim_video FROM 'dashboard/public/data/dim_video.parquet' (FORMAT 'parquet');
+COPY fact_agent_daily FROM 'dashboard/public/data/fact_agent_daily.parquet' (FORMAT 'parquet');
+COPY fact_channel_daily FROM 'dashboard/public/data/fact_channel_daily.parquet' (FORMAT 'parquet');
+COPY fact_video_daily FROM 'dashboard/public/data/fact_video_daily.parquet' (FORMAT 'parquet');
+COPY pipeline_info FROM 'dashboard/public/data/pipeline_info.parquet' (FORMAT 'parquet');
+COPY pipeline_runs FROM 'dashboard/public/data/pipeline_runs.parquet' (FORMAT 'parquet');
