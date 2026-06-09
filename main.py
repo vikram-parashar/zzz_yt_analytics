@@ -25,7 +25,6 @@ import pendulum
 from pathlib import Path
 import shutil
 from src.utils import (
-    DB_PATH,
     get_logger,
     get_db,
     chunk_list,
@@ -60,9 +59,9 @@ logger = get_logger("main")
 BACKFILL_TOPIC = "Zenless Zone Zero"
 BACKFILL_START_DATE = "2024-01-01"
 
-TYPE1_MAX_SEARCHES = 12
+TYPE1_MAX_SEARCHES = 1
 
-TYPE2_MAX_SEARCHES = 4
+TYPE2_MAX_SEARCHES = 1
 TYPE2_SEARCHES_PER_MONTH = 10
 
 SEARCH_DELAY_SECONDS = 2.0
@@ -533,32 +532,24 @@ def backup():
     ts = pendulum.now("UTC").format("YYYY-MM-DDTHH-mm-ss[Z]")
     out_dir = Path("artifacts/warehouse")
     out_dir.mkdir(parents=True, exist_ok=True)
+
     versioned = out_dir / f"warehouse_{ts}.db"
-
-    md = duckdb.connect(MOTHERDUCK_DB)
+    con = duckdb.connect(MOTHERDUCK_DB)
     try:
-        tables = [
-            row[0]
-            for row in md.execute(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
-            ).fetchall()
-        ]
-        local_backup = duckdb.connect(str(versioned))
-        try:
-            for tname in tables:
-                local_backup.execute(
-                    f"CREATE TABLE IF NOT EXISTS {tname} AS SELECT * FROM {MOTHERDUCK_DB}.main.{tname}"
-                )
-            local_backup.execute("CHECKPOINT")
-        finally:
-            local_backup.close()
+        source_db = MOTHERDUCK_DB.split(":")[1]
 
-        db_size_mb = versioned.stat().st_size / (1024 * 1024)
-        logger.info(
-            f"Published MotherDuck backup -> {versioned.name} ({db_size_mb:.1f} MB)"
-        )
+        con.execute(f"ATTACH '{versioned}' AS backup")
+        con.execute(f"COPY FROM DATABASE {source_db} TO backup")
+        con.execute("CHECKPOINT backup")
+        con.execute("DETACH backup")
     finally:
-        md.close()
+        con.close()
+
+    db_size_mb = versioned.stat().st_size / (1024 * 1024)
+
+    logger.info(
+        f"Published MotherDuck backup -> {versioned.name} ({db_size_mb:.1f} MB)"
+    )
 
     latest = out_dir / "latest.db"
     shutil.copy2(versioned, latest)
