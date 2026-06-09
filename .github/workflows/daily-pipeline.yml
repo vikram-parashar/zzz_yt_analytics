@@ -55,15 +55,9 @@ jobs:
       - name: Install local modules
         run: uv pip install -e .
 
-      # Backfill runs first — it's a no-op if already completed.
-      # When in progress, it picks up where it left off (40 searches/run).
-      # NOTE: Running backfill + daily together may consume ~5000 quota units.
-      #       Monitor usage at https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas
       - name: Run backfill (no-op if already completed)
         run: uv run python main.py backfill
 
-      # Daily pipeline now includes scrape-agents + match internally,
-      # so match is tracked as part of the daily run — no separate step.
       - name: Run daily pipeline
         run: uv run python main.py daily
 
@@ -84,3 +78,85 @@ jobs:
           path: artifacts/warehouse/latest.db
           retention-days: 90
           overwrite: true
+
+      - name: Upload dashboard duckdb artifact (for Vercel deploy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-duckdb
+          path: dashboard/data/warehouse.duckdb
+          retention-days: 7
+          overwrite: true
+
+  dashboard-build:
+    needs: run-pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download dashboard duckdb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-duckdb
+          path: dashboard/data/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: dashboard
+        run: npm run build
+
+  deploy:
+    needs: dashboard-build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/v2'
+
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download dashboard duckdb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-duckdb
+          path: dashboard/data/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel project settings
+        working-directory: dashboard
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build with Vercel
+        working-directory: dashboard
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel
+        working-directory: dashboard
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
