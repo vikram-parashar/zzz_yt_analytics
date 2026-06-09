@@ -13,7 +13,7 @@ Usage:
     uv run main.py match              Build video-agent associations
     uv run main.py build-agent-daily  Rebuild fact_agent_daily aggregates
     uv run main.py query <sql>        Run SQL queries in the warehouse
-    uv run main.py publish            Checkpoint + copy versioned warehouse
+    uv run main.py backup             create a backup copy from motherduck
     uv run main.py status             Show pipeline status
 """
 
@@ -24,7 +24,14 @@ import time
 import pendulum
 from pathlib import Path
 import shutil
-from src.utils import DB_PATH, get_logger, get_db, chunk_list
+from src.utils import (
+    DB_PATH,
+    get_logger,
+    get_db,
+    chunk_list,
+    MOTHERDUCK_TOKEN,
+    MOTHERDUCK_DB,
+)
 from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
 from src.warehouse import (
     get_pipeline_info,
@@ -517,36 +524,44 @@ def query(sql: str):
         con.sql(sql).show()
 
 
-def publish():
-    """Checkpoint WAL, then copy versioned warehouse snapshot."""
+def backup():
     import duckdb
 
-    if DB_PATH.exists():
-        con = duckdb.connect(str(DB_PATH))
-        con.execute("CHECKPOINT")
-        con.close()
-    else:
-        raise FileNotFoundError("warehouse.db not found — nothing to publish")
+    if not MOTHERDUCK_TOKEN:
+        raise RuntimeError("MOTHERDUCK_TOKEN environment variable is not set")
 
     ts = pendulum.now("UTC").format("YYYY-MM-DDTHH-mm-ss[Z]")
-
     out_dir = Path("artifacts/warehouse")
     out_dir.mkdir(parents=True, exist_ok=True)
-
     versioned = out_dir / f"warehouse_{ts}.db"
+
+    md = duckdb.connect(MOTHERDUCK_DB)
+    try:
+        tables = [
+            row[0]
+            for row in md.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
+            ).fetchall()
+        ]
+        local_backup = duckdb.connect(str(versioned))
+        try:
+            for tname in tables:
+                local_backup.execute(
+                    f"CREATE TABLE IF NOT EXISTS {tname} AS SELECT * FROM {MOTHERDUCK_DB}.main.{tname}"
+                )
+            local_backup.execute("CHECKPOINT")
+        finally:
+            local_backup.close()
+
+        db_size_mb = versioned.stat().st_size / (1024 * 1024)
+        logger.info(
+            f"Published MotherDuck backup -> {versioned.name} ({db_size_mb:.1f} MB)"
+        )
+    finally:
+        md.close()
+
     latest = out_dir / "latest.db"
-
-    shutil.copy2(DB_PATH, versioned)
-    shutil.copy2(DB_PATH, latest)
-
-    dashboard_data = Path("dashboard/data")
-    dashboard_data.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(DB_PATH, dashboard_data / "warehouse.duckdb")
-
-    db_size_mb = DB_PATH.stat().st_size / (1024 * 1024)
-    logger.info(
-        f"Published warehouse snapshot -> {versioned.name} ({db_size_mb:.1f} MB)"
-    )
+    shutil.copy2(versioned, latest)
 
 
 def build_agent_daily_cmd():
@@ -570,7 +585,7 @@ COMMANDS = {
     "match": run_tracked("match")(match_all_videos),
     "build-agent-daily": run_tracked("build-agent-daily")(build_agent_daily_cmd),
     "status": status,
-    "publish": publish,
+    "backup": backup,
 }
 
 

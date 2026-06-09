@@ -7,15 +7,15 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-from src.utils import WORK_DIR, get_db, get_logger
+from src.utils import get_db, get_logger
 from src.warehouse import get_agent_names
 
 logger = get_logger(__name__)
 
 WIKI_URL = "https://www.lootbar.com/blog/en/zenless-zone-zero-character-list.html"
 
-ALIASES_PATH = Path(WORK_DIR) / "data" / "aliases.json"
-FALLBACK_AGENTS_PATH = Path(WORK_DIR) / "data" / "agents_fallback.json"
+ALIASES_PATH = Path("data/aliases.json")
+FALLBACK_AGENTS_PATH = Path("data/agents_fallback.json")
 
 HTTP_MAX_RETRIES = 3
 HTTP_RETRY_DELAY = 5

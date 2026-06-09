@@ -7,9 +7,11 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-WORK_DIR = os.getenv("WORK_DIR", ".")
-DB_PATH = Path(WORK_DIR) / "data" / "warehouse.db"
-SEED_PATH = Path(WORK_DIR) / "data" / "warehouse_seed.db"
+
+MOTHERDUCK_TOKEN = os.getenv("MOTHERDUCK_TOKEN")
+MOTHERDUCK_DB = os.getenv("MOTHERDUCK_DB", "md:zzz_yt_analytics")
+
+DB_PATH = Path("./data/warehouse.db")
 
 
 def get_logger(name: str = "pipeline") -> logging.Logger:
@@ -32,20 +34,19 @@ def get_logger(name: str = "pipeline") -> logging.Logger:
 
 @contextmanager
 def get_db():
-    """Open a DuckDB connection, bootstrapping from seed if needed."""
-    if not DB_PATH.exists() and SEED_PATH.exists():
+    if bool(MOTHERDUCK_TOKEN):
+        con = duckdb.connect(MOTHERDUCK_DB)
+        try:
+            yield con
+        finally:
+            con.close()
+    else:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        import shutil
-
-        shutil.copy2(SEED_PATH, DB_PATH)
-
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    con = duckdb.connect(str(DB_PATH))
-    try:
-        yield con
-    finally:
-        con.close()
+        con = duckdb.connect(str(DB_PATH))
+        try:
+            yield con
+        finally:
+            con.close()
 
 
 def chunk_list(lst: list, size: int) -> list[list]:
