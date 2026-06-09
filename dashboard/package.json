@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run copy-db && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "copy-db": "cp ../data/warehouse.db ./data/warehouse.duckdb || echo 'No warehouse.db found, run the pipeline first'"
   },
   "dependencies": {
-    "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
+    "@duckdb/node-api": "^1.5.3-r.3",
     "next": "16.2.7",
     "react": "19.2.4",
     "react-dom": "19.2.4"

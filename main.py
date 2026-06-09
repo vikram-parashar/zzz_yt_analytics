@@ -539,6 +539,10 @@ def publish():
     shutil.copy2(DB_PATH, versioned)
     shutil.copy2(DB_PATH, latest)
 
+    dashboard_data = Path("dashboard/data")
+    dashboard_data.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(DB_PATH, dashboard_data / "warehouse.duckdb")
+
     db_size_mb = DB_PATH.stat().st_size / (1024 * 1024)
     logger.info(
         f"Published warehouse snapshot -> {versioned.name} ({db_size_mb:.1f} MB)"

@@ -41,13 +41,18 @@ export const DIM_PATCH_QUERY = `
   FROM dim_patch
   ORDER BY banner_start
 `;
+export const FACT_MIN_DATE_QUERY = `
+  SELECT MIN(snapshot_date)::VARCHAR AS mn FROM fact_agent_daily
+`;
 export function topAgentsTimelineQuery(startDate: string, endDate: string): string {
+  const sd = startDate.replace(/'/g, "''");
+  const ed = endDate.replace(/'/g, "''");
   return `
     WITH _top_agents AS (
       SELECT b.agent_name
       FROM bridge_video_agent b
       JOIN dim_video v ON v.video_id = b.video_id
-      WHERE v.published_at >= '${startDate}' AND v.published_at <= '${endDate}'
+      WHERE v.published_at >= '${sd}' AND v.published_at <= '${ed}'
       GROUP BY b.agent_name
       ORDER BY SUM(b.confidence) DESC
       LIMIT 5
@@ -58,7 +63,7 @@ export function topAgentsTimelineQuery(startDate: string, endDate: string): stri
       COUNT(*) AS video_count
     FROM (SELECT * FROM bridge_video_agent WHERE attribution_weight >= 0.2 AND agent_name IN (SELECT agent_name FROM _top_agents)) AS b
     JOIN dim_video v ON v.video_id = b.video_id
-    WHERE v.published_at >= '${startDate}' AND v.published_at <= '${endDate}'
+    WHERE v.published_at >= '${sd}' AND v.published_at <= '${ed}'
     GROUP BY b.agent_name, strftime(v.published_at, '%Y-%m')
     ORDER BY b.agent_name, month
   `;
@@ -166,6 +171,8 @@ export function risingCreatorsQuery(_timeRange: 'week' | 'month' | 'year'): stri
 }
 export function agentVideoTimelineQuery(agentName: string, startDate: string, endDate: string): string {
   const safe = agentName.replace(/'/g, "''");
+  const sd = startDate.replace(/'/g, "''");
+  const ed = endDate.replace(/'/g, "''");
   return `
     SELECT
       strftime(dv.published_at, '%Y-%m') AS month,
@@ -173,8 +180,8 @@ export function agentVideoTimelineQuery(agentName: string, startDate: string, en
     FROM bridge_video_agent bva
     JOIN dim_video dv ON bva.video_id = dv.video_id
     WHERE bva.agent_name = '${safe}'
-      AND dv.published_at >= '${startDate}'
-      AND dv.published_at <= '${endDate}'
+      AND dv.published_at >= '${sd}'
+      AND dv.published_at <= '${ed}'
     GROUP BY strftime(dv.published_at, '%Y-%m')
     ORDER BY month
   `;
@@ -223,7 +230,7 @@ export function agentMostLikedVideoQuery(agentName: string, limit: number = 50):
     CROSS JOIN global_rate gr
     WHERE bva.agent_name = '${safe}' AND lf.view_count > 0
     ORDER BY like_score DESC
-    LIMIT ${limit}
+    LIMIT ${Math.min(limit, 50)}
   `;
 }
 export function agentMostViewedOnQuery(agentName: string): string {
