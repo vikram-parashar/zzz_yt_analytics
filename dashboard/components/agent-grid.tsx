@@ -24,7 +24,7 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
     if (search) list = list.filter(a => a.name.toLowerCase().includes(search.toLowerCase()));
     list.sort((a, b) => {
       let va: any = a[sortField] ?? 0, vb: any = b[sortField] ?? 0;
-      if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb as string).toLowerCase(); }
+      if (typeof va === 'string' && typeof vb === 'string') { va = va.toLowerCase(); vb = vb.toLowerCase(); }
       if (va < vb) return sortDir === 'asc' ? -1 : 1;
       if (va > vb) return sortDir === 'asc' ? 1 : -1;
       return 0;
@@ -38,8 +38,10 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
         {queryTime !== undefined && (
           <span className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</span>
         )}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 items-center gap-3 mb-4">
         <input type="text" placeholder="Search agent..."
-          className="input input-sm input-bordered w-48"
+          className="input input-sm input-bordered w-full"
           value={search} onChange={e => setSearch(e.target.value)} />
         <select className="select select-sm select-bordered" value={filterRank} onChange={e => setFilterRank(e.target.value)}>
           <option value="all">All Ranks</option>
@@ -71,49 +73,52 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
         </select>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {filtered.map((agent) => (
-          <Link prefetch={false} key={agent.name}
-            href={`/agent/${encodeURIComponent(agent.name)}`}
-            className={`card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer no-underline ${agent.on_banner ? 'ring-2 ring-primary' : ''}`}>
-            <div className="card-body p-3">
-              <div className="flex items-center gap-3">
-                <div className="avatar">
-                  <div className="w-12 h-12 rounded-md">
-                    {agent.img ?
-                      <Image height={200} width={200} src={agent.img} alt={agent.name} /> : (
-                        <div className="bg-neutral text-neutral-content w-12 h-12 rounded-full flex items-center justify-center">
-                          <span className="text-lg font-bold">{agent.name[0]}</span>
-                        </div>
-                      )}
+        {filtered.map((agent) => {
+          const colors = ATTR_COLORS[agent.attribute] ?? ['#666', '#666'];
+          return (
+            <Link prefetch={false} key={agent.name}
+              href={`/agent/${encodeURIComponent(agent.name)}`}
+              className={`card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer no-underline ${agent.on_banner ? 'ring-2 ring-primary' : ''}`}>
+              <div className="card-body p-3">
+                <div className="flex items-center gap-3">
+                  <div className="avatar">
+                    <div className="w-12 h-12 rounded-md">
+                      {agent.img ?
+                        <Image height={200} width={200} src={agent.img} alt={agent.name} /> : (
+                          <div className="bg-neutral text-neutral-content w-12 h-12 rounded-full flex items-center justify-center">
+                            <span className="text-lg font-bold">{agent.name[0]}</span>
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-sm truncate">{agent.name}</h3>
+                    <div className="flex gap-1 mt-1">
+                      <span className={`badge badge-xs text-accent-content ${agent.rank === 'S' ? 'bg-[#F78E02]' : agent.rank === 'A' ? 'bg-[#CF22F3]' : 'badge-ghost'}`}>{agent.rank || '?'}</span> <span className="badge badge-xs font-bold text-black" style={{
+                        background: `linear-gradient( 90deg, ${colors[0]} 0%, ${colors[1]} 100%)`,
+                      }}>{agent.attribute || 'Unknown'}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-sm truncate">{agent.name}</h3>
-                  <div className="flex gap-1 mt-1">
-                    <span className={`badge badge-xs ${agent.rank === 'S' ? 'badge-warning' : 'badge-ghost'}`}>{agent.rank}</span>
-                    <span className="badge badge-xs" style={{ backgroundColor: ATTR_COLORS[agent.attribute] || '#6c7086', color: '#1e1e2e' }}>{agent.attribute}</span>
+                <div className="grid grid-cols-3 gap-1 mt-2 text-center">
+                  <div>
+                    <div className="text-xs text-base-content/60">Views</div>
+                    <div className="font-bold text-sm">{fmt(agent.total_views ?? 0)}</div>
                   </div>
-                  <p className="text-xs text-base-content/50 mt-0.5">{agent.faction}</p>
+                  <div>
+                    <div className="text-xs text-base-content/60">Videos</div>
+                    <div className="font-bold text-sm">{agent.video_count ?? 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-base-content/60">Likes</div>
+                    <div className="font-bold text-sm">{fmt(agent.total_likes ?? 0)}</div>
+                  </div>
                 </div>
+                {agent.on_banner && <div className="badge badge-primary badge-sm mt-1 w-full">On Banner</div>}
               </div>
-              <div className="grid grid-cols-3 gap-1 mt-2 text-center">
-                <div>
-                  <div className="text-xs text-base-content/60">Views</div>
-                  <div className="font-bold text-sm">{fmt(agent.total_views ?? 0)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-base-content/60">Videos</div>
-                  <div className="font-bold text-sm">{agent.video_count ?? 0}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-base-content/60">Likes</div>
-                  <div className="font-bold text-sm">{fmt(agent.total_likes ?? 0)}</div>
-                </div>
-              </div>
-              {agent.on_banner && <div className="badge badge-primary badge-sm mt-1 w-full">On Banner</div>}
-            </div>
-          </Link>
-        ))}
+            </Link>
+          )
+        })}
       </div>
     </section>
   );
