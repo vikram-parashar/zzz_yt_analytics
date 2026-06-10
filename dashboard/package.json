@@ -4,10 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run copy-db && next build",
+    "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "copy-db": "test -f ./data/warehouse.duckdb || (cp ../data/warehouse.db ./data/warehouse.duckdb 2>/dev/null || echo 'No warehouse.duckdb found — pipeline artifact or local copy required')"
+    "lint": "eslint"
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.3-r.3",
