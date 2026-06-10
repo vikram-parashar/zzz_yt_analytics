@@ -20,7 +20,7 @@ export function CoOccurringAgents({ agents, coOccurring, queryTime }: CoOccurrin
             {coOccurring.map((ca, i) => {
               const caAgent = agents.find(a => a.name === ca.agent_name);
               return (
-                <Link key={ca.agent_name}
+                <Link key={ca.agent_name} prefetch={false}
                   href={`/agent/${encodeURIComponent(ca.agent_name)}`}
                   className="card bg-base-200 shadow-md w-24 hover:shadow-lg transition-shadow no-underline">
                   <div className="card-body p-2 items-center text-center">

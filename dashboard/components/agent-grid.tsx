@@ -72,7 +72,7 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {filtered.map((agent) => (
-          <Link key={agent.name}
+          <Link prefetch={false} key={agent.name}
             href={`/agent/${encodeURIComponent(agent.name)}`}
             className={`card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer no-underline ${agent.on_banner ? 'ring-2 ring-primary' : ''}`}>
             <div className="card-body p-3">
