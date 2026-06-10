@@ -59,9 +59,9 @@ logger = get_logger("main")
 BACKFILL_TOPIC = "Zenless Zone Zero"
 BACKFILL_START_DATE = "2024-01-01"
 
-TYPE1_MAX_SEARCHES = 40
+TYPE1_MAX_SEARCHES = 60
 
-TYPE2_MAX_SEARCHES = 10
+TYPE2_MAX_SEARCHES = 20
 TYPE2_SEARCHES_PER_MONTH = 10
 
 SEARCH_DELAY_SECONDS = 2.0
@@ -92,8 +92,7 @@ def _ingest_search_results(con, items, discovery_type: str) -> int:
     if not items:
         return 0
     df = _video_search_to_df(items)
-    new_ids = insert_discovered_videos(con, df, discovery_type=discovery_type)
-    return len(new_ids) if new_ids else 0
+    insert_discovered_videos(con, df, discovery_type=discovery_type)
 
 
 def setup():
@@ -121,7 +120,6 @@ def _run_backfill_type1():
         current_date = pendulum.parse(last_day).add(days=1)
 
     yesterday = pendulum.yesterday()
-    total_new = 0
     searches_used = 0
 
     with get_db() as con:
@@ -149,12 +147,10 @@ def _run_backfill_type1():
             )
             searches_used += 1
 
-            n_new = _ingest_search_results(con, items, discovery_type="popular")
-            total_new += n_new
+            _ingest_search_results(con, items, discovery_type="popular")
 
             logger.info(
                 f"[Type I] {current_date.to_date_string()} | "
-                f"{len(items)} raw -> {n_new} new | "
                 f"searches: {searches_used}/{TYPE1_MAX_SEARCHES}"
             )
 

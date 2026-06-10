@@ -298,9 +298,6 @@ def insert_discovered_videos(con, df: pd.DataFrame, discovery_type: str = "popul
     today = pendulum.now().to_date_string()
     con.register("tmp_video_search", df)
 
-    existing = con.sql("SELECT video_id FROM dim_video").df()["video_id"].tolist()
-    new_ids = [vid for vid in df["video_id"].tolist() if vid not in existing]
-
     con.execute(
         """
         INSERT INTO dim_video (video_id, title, description, channel_id, published_at, ingested_date, discovery_type)
@@ -320,12 +317,9 @@ def insert_discovered_videos(con, df: pd.DataFrame, discovery_type: str = "popul
         [today],
     )
 
-    if new_ids:
-        from src.matching import match_videos
+    from src.matching import match_videos
 
-        match_videos(con, video_ids=new_ids)
-
-    return new_ids
+    match_videos(con, videos_df=df)
 
 
 def upsert_video_details(con, df: pd.DataFrame):

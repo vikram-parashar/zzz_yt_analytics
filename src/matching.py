@@ -1,4 +1,4 @@
-import math
+from collections import defaultdict
 import re
 
 import pandas as pd
@@ -30,88 +30,50 @@ def normalize(text: str) -> str:
     return text.lower()
 
 
-def _word_match(text: str, term: str) -> bool:
-    if any("\u4e00" <= c <= "\u9fff" for c in term):
-        return term in text
+def _word_match(text: str, term: str) -> int:
+    term = term.lower().strip()
+    if not term:
+        return 0
 
-    return bool(
-        re.search(
-            rf"\b{re.escape(term)}\b",
-            text,
-            re.IGNORECASE,
-        )
-    )
+    text = text.lower()
+
+    cnt = (len(text) - len(text.replace(term, ""))) // len(term)
+
+    if " " in term:
+        no_space_term = term.replace(" ", "")
+        if no_space_term:
+            cnt += (len(text) - len(text.replace(no_space_term, ""))) // len(
+                no_space_term
+            )
+
+    return cnt
 
 
-def _compute_confidence(
-    video_row: pd.Series,
-    aliases_df: pd.DataFrame,
-) -> dict[str, float]:
-    results = {}
+def _compute_confidence(video_row, aliases) -> dict[str, int]:
+    results = defaultdict(int)
 
-    title = normalize(str(video_row.get("title", "")))
-    description = normalize(str(video_row.get("description", "")))
+    title = normalize(str(video_row.title))
+    description = normalize(str(video_row.description))
 
-    tags_raw = video_row.get("tags")
+    tags_raw = video_row.tags
     tags = tags_raw if isinstance(tags_raw, list) else []
-    tags = [normalize(str(t)) for t in tags]
+    tags_text = normalize(" ".join(tags))
 
-    tag_matched_agents = set()
+    for agent, alias in aliases:
+        score = 0
 
-    for _, row in aliases_df.iterrows():
-        alias = normalize(str(row["alias"]))
-        agent = row["name"]
-
-        if not alias:
-            continue
-
-        if any(_word_match(tag, alias) for tag in tags):
-            tag_matched_agents.add(agent)
-
-    num_tag_agents = len(tag_matched_agents)
-    tag_multiplier = (
-        1.0 if num_tag_agents <= 1 else 1.0 / (1 + math.log(num_tag_agents))
-    )
-
-    for _, row in aliases_df.iterrows():
-        alias = normalize(str(row["alias"]))
-        agent = row["name"]
-
-        if not alias:
-            continue
-
-        score = 0.0
-
-        if _word_match(title, alias):
-            score += MATCH_WEIGHTS["title"]
-
-        if _word_match(description, alias):
-            score += MATCH_WEIGHTS["description"]
-
-        if any(_word_match(tag, alias) for tag in tags):
-            score += MATCH_WEIGHTS["tags"] * tag_multiplier
+        score += MATCH_WEIGHTS["title"] * _word_match(title, alias)
+        score += MATCH_WEIGHTS["description"] * _word_match(description, alias)
+        score += MATCH_WEIGHTS["tags"] * _word_match(tags_text, alias)
 
         if score == 0:
             continue
 
-        alias_len = len(alias)
-
-        current = results.get(agent)
-
-        if (
-            current is None
-            or score > current["score"]
-            or (score == current["score"] and alias_len > current["alias_len"])
-        ):
-            results[agent] = {
-                "score": score,
-                "alias_len": alias_len,
-            }
-
-    return {agent: data["score"] for agent, data in results.items()}
+        results[agent] += score
+    return results
 
 
-def match_videos(con, video_ids: list[str] | None = None):
+def match_videos(con, videos_df: pd.DataFrame | None = None):
     aliases_df = con.sql("""
         SELECT name, alias
         FROM bridge_agent_alias
@@ -120,23 +82,9 @@ def match_videos(con, video_ids: list[str] | None = None):
     if aliases_df.empty:
         logger.warning("No aliases found — skipping matching")
         return
+    aliases = list(aliases_df[["name", "alias"]].itertuples(index=False, name=None))
 
-    if video_ids:
-        placeholders = ", ".join(["?"] * len(video_ids))
-
-        videos_df = con.execute(
-            f"""
-            SELECT
-                video_id,
-                title,
-                description,
-                tags
-            FROM dim_video
-            WHERE video_id IN ({placeholders})
-            """,
-            video_ids,
-        ).df()
-    else:
+    if videos_df is None:
         videos_df = con.sql("""
             SELECT
                 video_id,
@@ -146,34 +94,27 @@ def match_videos(con, video_ids: list[str] | None = None):
             FROM dim_video
         """).df()
 
+    if videos_df is None:
+        logger.warning("cannot fetch dim_video")
+        return
+
     if videos_df.empty:
         logger.info("No videos to match")
         return
 
     results = []
 
-    for _, video in videos_df.iterrows():
-        scores = _compute_confidence(video, aliases_df)
+    for video in videos_df.itertuples(index=False):
+        scores = _compute_confidence(video, aliases)
 
         for agent, confidence in scores.items():
             results.append(
                 {
-                    "video_id": video["video_id"],
+                    "video_id": video.video_id,
                     "agent_name": agent,
                     "confidence": confidence,
                 }
             )
-
-    if video_ids:
-        placeholders = ", ".join(["?"] * len(video_ids))
-
-        con.execute(
-            f"""
-            DELETE FROM bridge_video_agent
-            WHERE video_id IN ({placeholders})
-            """,
-            video_ids,
-        )
 
     if results:
         results_df = pd.DataFrame(results)
@@ -203,9 +144,6 @@ def match_videos(con, video_ids: list[str] | None = None):
     update_attribution_weights(con)
 
 
-def match_all_videos(con=None):
-    if con is not None:
+def match_all_videos():
+    with get_db() as con:
         match_videos(con)
-    else:
-        with get_db() as con:
-            match_videos(con)

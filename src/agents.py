@@ -296,10 +296,12 @@ def upsert_aliases(con, alias_map: dict):
 
     try:
         con.execute("""
+            truncate bridge_agent_alias
+        """)
+        con.execute("""
             INSERT INTO bridge_agent_alias
             SELECT *
             FROM alias_tmp
-            ON CONFLICT DO NOTHING
         """)
     except Exception:
         logger.exception("db.alias_upsert.failed")
