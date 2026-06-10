@@ -110,9 +110,9 @@ TABLE_DDL = {
         CREATE TABLE IF NOT EXISTS fact_agent_daily (
             agent_name VARCHAR,
             snapshot_date DATE,
-            attributed_views DOUBLE,
-            attributed_likes DOUBLE,
-            attributed_comments DOUBLE,
+            attributed_views BIGINT,
+            attributed_likes BIGINT,
+            attributed_comments BIGINT,
             video_count BIGINT,
             PRIMARY KEY (agent_name, snapshot_date)
         )
@@ -438,7 +438,6 @@ def update_attribution_weights(con):
         WHERE b.video_id = totals.video_id
           AND totals.total_conf > 0
     """)
-    row_count = con.execute("SELECT COUNT(*) FROM bridge_video_agent").fetchone()[0]
 
 
 def update_latest_video_counts(con):
@@ -455,9 +454,6 @@ def update_latest_video_counts(con):
         ) AS latest
         WHERE dv.video_id = latest.video_id
     """)
-    row_count = con.execute(
-        "SELECT COUNT(*) FROM dim_video WHERE latest_view_count IS NOT NULL"
-    ).fetchone()[0]
 
 
 def build_fact_agent_daily(con, snapshot_date: str | None = None):
@@ -477,9 +473,9 @@ def build_fact_agent_daily(con, snapshot_date: str | None = None):
         SELECT
             b.agent_name,
             f.snapshot_date,
-            SUM(b.attribution_weight * f.view_count)     AS attributed_views,
-            SUM(b.attribution_weight * f.like_count)     AS attributed_likes,
-            SUM(b.attribution_weight * f.comment_count)  AS attributed_comments,
+            ROUND(SUM(b.attribution_weight * f.view_count))     AS attributed_views,
+            ROUND(SUM(b.attribution_weight * f.like_count))     AS attributed_likes,
+            ROUND(SUM(b.attribution_weight * f.comment_count))  AS attributed_comments,
             COUNT(DISTINCT b.video_id)                    AS video_count
         FROM bridge_video_agent AS b
         JOIN fact_video_daily   AS f
