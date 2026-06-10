@@ -36,14 +36,15 @@ def _word_match(text: str, term: str) -> int:
         return 0
 
     text = text.lower()
+    cnt = 0
 
-    cnt = (len(text) - len(text.replace(term, ""))) // len(term)
+    cnt += len(re.findall(rf"\b{re.escape(term)}\b", text))
 
     if " " in term:
         no_space_term = term.replace(" ", "")
         if no_space_term:
-            cnt += (len(text) - len(text.replace(no_space_term, ""))) // len(
-                no_space_term
+            cnt += len(
+                re.findall(rf"\b{re.escape(no_space_term)}\b", text.replace(" ", ""))
             )
 
     return cnt
