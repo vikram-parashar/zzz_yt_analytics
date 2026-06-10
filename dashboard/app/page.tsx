@@ -28,7 +28,7 @@ export default async function Home() {
       </div>
       <main className="max-w-7xl mx-auto p-4 space-y-6 flex-1">
         <Suspense fallback={<ChartLoading />}>
-          <AgentTimelineChart agents={agents} />
+          <AgentTimelineChart />
         </Suspense>
         <Suspense fallback={<ChartLoading />}>
           <BannerGainSection agents={agents} patches={patches} factMinDate={factMinDate} />

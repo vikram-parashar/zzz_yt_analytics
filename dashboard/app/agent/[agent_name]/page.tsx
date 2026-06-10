@@ -1,7 +1,16 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { fetchAgentStats, fetchAgentBanners, fetchAgentEngagement, fetchAgentVideoTimeline, fetchAgentMostLiked, fetchAgentMostViewedOn, fetchAgentCoOccurring } from '@/lib/fetch';
+import {
+  fetchAgentLookup,
+  fetchAgentNames,
+  fetchAgentBanners,
+  fetchAgentEngagement,
+  fetchAgentVideoTimeline,
+  fetchAgentMostLiked,
+  fetchAgentMostViewedOn,
+  fetchAgentCoOccurring,
+} from '@/lib/fetch';
 import { ChartLoading } from '@/components/chart-loading';
 import { EngagementChart } from '@/components/agent-detail/engagement-chart';
 import { VideoTimelineChart } from '@/components/agent-detail/video-timeline-chart';
@@ -20,23 +29,24 @@ export default async function AgentDetailPage({ params }: PageProps) {
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
   const startDate = sixMonthsAgo.toISOString().slice(0, 10);
   const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-  const [allAgentsRes, videoTimelineRes, engagementRes, bannersRes, mostLikedRes, mostViewedOnRes, coOccurringRes] = await Promise.all([
-    fetchAgentStats(),
+  const [agentRes, agentNamesRes, videoTimelineRes, engagementRes, bannersRes, mostLikedRes, mostViewedOnRes, coOccurringRes] = await Promise.all([
+    fetchAgentLookup(decodedName),
+    fetchAgentNames(),
     fetchAgentVideoTimeline(decodedName, startDate, endDate),
     fetchAgentEngagement(decodedName),
     fetchAgentBanners(decodedName),
-    fetchAgentMostLiked(decodedName, 50),
+    fetchAgentMostLiked(decodedName),
     fetchAgentMostViewedOn(decodedName),
     fetchAgentCoOccurring(decodedName),
   ]);
-  const allAgents = allAgentsRes.data;
+  const agent = agentRes.data;
+  const agentNames = agentNamesRes.data;
   const videoTimeline = videoTimelineRes.data;
   const engagement = engagementRes.data;
   const banners = bannersRes.data;
   const mostLiked = mostLikedRes.data;
   const mostViewedOn = mostViewedOnRes.data;
   const coOccurring = coOccurringRes.data;
-  const agent = allAgents.find(a => a.name === decodedName) || null;
   if (!agent) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-base-300">
@@ -47,6 +57,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
       </div>
     );
   }
+  const coAgents: { name: string; img: string; rank: string; attribute: string; speciality: string; faction: string }[] = agentNames;
   return (
     <div className="min-h-screen bg-base-300 text-base-content flex flex-col">
       <div className="navbar bg-base-100 shadow-lg sticky top-0 z-50">
@@ -126,7 +137,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
           </Suspense>
         </div>
         <Suspense fallback={<ChartLoading />}>
-          <CoOccurringAgents agents={allAgents} coOccurring={coOccurring} queryTime={coOccurringRes.durationSec} />
+          <CoOccurringAgents agents={coAgents} coOccurring={coOccurring} queryTime={coOccurringRes.durationSec} />
         </Suspense>
       </main>
       <footer className="footer footer-center p-4 bg-base-100 text-base-content/60 mt-8">

@@ -26,7 +26,6 @@ export function MostLikedTable({ videos, queryTime }: MostLikedTableProps) {
                     <th>Title</th>
                     <th>Views</th>
                     <th>Likes</th>
-                    <th>Score</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -40,7 +39,6 @@ export function MostLikedTable({ videos, queryTime }: MostLikedTableProps) {
                       </td>
                       <td className="text-sm">{fmt(v.view_count ?? 0)}</td>
                       <td className="text-sm">{fmt(v.like_count ?? 0)}</td>
-                      <td className="text-sm font-bold text-primary">{(v.like_score ?? 0).toFixed(1)}</td>
                     </tr>
                   ))}
                 </tbody>

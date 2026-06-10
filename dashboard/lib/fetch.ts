@@ -1,8 +1,10 @@
 import { query } from './db';
 import {
   AGENT_STATS_QUERY,
+  AGENT_NAMES_QUERY,
   DIM_PATCH_QUERY,
   FACT_MIN_DATE_QUERY,
+  agentLookupQuery,
   topAgentsTimelineQuery,
   bannerAgentGainQuery,
   risingCreatorsQuery,
@@ -53,6 +55,22 @@ export async function fetchAgentStats(): Promise<FetchResult<AgentStats[]>> {
   const { rows, durationSec } = await query<AgentStats>(AGENT_STATS_QUERY);
   return { data: rows, durationSec };
 }
+export async function fetchAgentLookup(agentName: string): Promise<FetchResult<AgentStats | null>> {
+  const { rows, durationSec } = await query<AgentStats>(agentLookupQuery(agentName));
+  return { data: rows[0] ?? null, durationSec };
+}
+export interface AgentNameRow {
+  name: string;
+  img: string;
+  rank: string;
+  attribute: string;
+  speciality: string;
+  faction: string;
+}
+export async function fetchAgentNames(): Promise<FetchResult<AgentNameRow[]>> {
+  const { rows, durationSec } = await query<AgentNameRow>(AGENT_NAMES_QUERY);
+  return { data: rows, durationSec };
+}
 export async function fetchDimPatch(): Promise<FetchResult<DimPatch[]>> {
   const { rows, durationSec } = await query<DimPatch>(DIM_PATCH_QUERY);
   return { data: rows, durationSec };
@@ -85,8 +103,8 @@ export async function fetchAgentEngagement(agentName: string): Promise<FetchResu
   const { rows, durationSec } = await query<EngagementRow>(agentEngagementTrendQuery(agentName));
   return { data: rows, durationSec };
 }
-export async function fetchAgentMostLiked(agentName: string, limit: number = 50): Promise<FetchResult<MostLikedVideo[]>> {
-  const { rows, durationSec } = await query<MostLikedVideo>(agentMostLikedVideoQuery(agentName, limit));
+export async function fetchAgentMostLiked(agentName: string ): Promise<FetchResult<MostLikedVideo[]>> {
+  const { rows, durationSec } = await query<MostLikedVideo>(agentMostLikedVideoQuery(agentName));
   return { data: rows, durationSec };
 }
 export async function fetchAgentMostViewedOn(agentName: string): Promise<FetchResult<AgentMostViewedOn[]>> {

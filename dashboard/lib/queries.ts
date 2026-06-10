@@ -1,39 +1,25 @@
 export const AGENT_STATS_QUERY = `
-  WITH video_conf_total AS (
-    SELECT video_id, SUM(confidence) AS total_conf FROM bridge_video_agent GROUP BY video_id
-  ),
-  latest_fvd AS (
-    SELECT fvd.video_id, fvd.view_count, fvd.like_count, fvd.comment_count, fvd.snapshot_date
-    FROM fact_video_daily fvd
-    JOIN (
-      SELECT video_id, MAX(snapshot_date) AS max_date FROM fact_video_daily GROUP BY video_id
-    ) fvd_max ON fvd.video_id = fvd_max.video_id AND fvd.snapshot_date = fvd_max.max_date
-  )
   SELECT
-    a.name, a.img, a.rank, a.attribute, a.speciality, a.faction, a.release_date,
-    COALESCE(vd.video_count, 0) AS video_count,
-    COALESCE(vd.total_views, 0) AS total_views,
-    COALESCE(vd.total_likes, 0) AS total_likes,
-    COALESCE(vd.total_comments, 0) AS total_comments,
-    COALESCE(vd.latest_view_count, 0) AS latest_view_count,
-    CASE WHEN p.agent_name IS NOT NULL THEN true ELSE false END AS on_banner
+      a.name, a.img, a.rank, a.attribute, a.speciality, a.faction, a.release_date,
+      fad.video_count,
+      fad.attributed_views AS total_views,
+      fad.attributed_likes AS total_likes,
+      fad.attributed_comments AS total_comments,
+      (p.agent_name IS NOT NULL) AS on_banner
   FROM dim_agent a
   LEFT JOIN (
-    SELECT
-      bva.agent_name,
-      COUNT(DISTINCT bva.video_id) AS video_count,
-      SUM(lf.view_count * bva.confidence / vct.total_conf) AS total_views,
-      SUM(lf.like_count * bva.confidence / vct.total_conf) AS total_likes,
-      SUM(lf.comment_count * bva.confidence / vct.total_conf) AS total_comments,
-      SUM(lf.view_count * bva.confidence / vct.total_conf) AS latest_view_count
-    FROM bridge_video_agent bva
-    JOIN video_conf_total vct ON bva.video_id = vct.video_id
-    JOIN latest_fvd lf ON bva.video_id = lf.video_id
-    GROUP BY bva.agent_name
-  ) vd ON a.name = vd.agent_name
-  LEFT JOIN dim_patch p ON a.name = p.agent_name
-    AND CURRENT_DATE >= p.banner_start AND CURRENT_DATE <= p.banner_end
-  ORDER BY total_views DESC
+      SELECT DISTINCT ON (agent_name)
+          *
+      FROM fact_agent_daily
+      ORDER BY agent_name, snapshot_date DESC
+  ) fad
+      ON a.name = fad.agent_name
+  LEFT JOIN (
+      SELECT *
+      FROM dim_patch
+      WHERE now() BETWEEN banner_start AND banner_end
+  ) p
+      ON a.name = p.agent_name;
 `;
 export const DIM_PATCH_QUERY = `
   SELECT DISTINCT version, agent_name AS banner_agent,
@@ -43,6 +29,35 @@ export const DIM_PATCH_QUERY = `
 `;
 export const FACT_MIN_DATE_QUERY = `
   SELECT MIN(snapshot_date)::VARCHAR AS mn FROM fact_agent_daily
+`;
+export function agentLookupQuery(agentName: string): string {
+  const safe = agentName.replace(/'/g, "''");
+  return `
+    SELECT
+      a.name, a.img, a.rank, a.attribute, a.speciality, a.faction, a.release_date,
+      fad.video_count,
+      fad.attributed_views AS total_views,
+      fad.attributed_likes AS total_likes,
+      fad.attributed_comments AS total_comments,
+      (p.agent_name IS NOT NULL) AS on_banner
+  FROM (select * from dim_agent where name='${safe}') a
+  LEFT JOIN (
+      SELECT DISTINCT ON (agent_name)
+          *
+      FROM fact_agent_daily
+      ORDER BY agent_name, snapshot_date DESC
+  ) fad
+      ON a.name = fad.agent_name
+  LEFT JOIN (
+      SELECT *
+      FROM dim_patch
+      WHERE now() BETWEEN banner_start AND banner_end
+  ) p
+      ON a.name = p.agent_name;
+  `;
+}
+export const AGENT_NAMES_QUERY = `
+  SELECT name, img, rank, attribute, speciality, faction FROM dim_agent
 `;
 export function topAgentsTimelineQuery(startDate: string, endDate: string): string {
   const sd = startDate.replace(/'/g, "''");
@@ -175,15 +190,15 @@ export function agentVideoTimelineQuery(agentName: string, startDate: string, en
   const ed = endDate.replace(/'/g, "''");
   return `
     SELECT
-      strftime(dv.published_at, '%Y-%m') AS month,
-      COUNT(*) AS video_cnt
+        strftime(dv.published_at, '%Y-%m') AS month,
+        COUNT(*) AS video_cnt
     FROM bridge_video_agent bva
-    JOIN dim_video dv ON bva.video_id = dv.video_id
+    JOIN dim_video dv
+        ON bva.video_id = dv.video_id
     WHERE bva.agent_name = '${safe}'
-      AND dv.published_at >= '${sd}'
-      AND dv.published_at <= '${ed}'
-    GROUP BY strftime(dv.published_at, '%Y-%m')
-    ORDER BY month
+      AND dv.published_at BETWEEN '${sd}' AND '${ed}'
+    GROUP BY 1
+    ORDER BY 1;
   `;
 }
 export function agentBannersQuery(agentName: string): string {
@@ -203,57 +218,52 @@ export function agentEngagementTrendQuery(agentName: string): string {
     ORDER BY snapshot_date
   `;
 }
-export function agentMostLikedVideoQuery(agentName: string, limit: number = 50): string {
+export function agentMostLikedVideoQuery(agentName: string): string {
   const safe = agentName.replace(/'/g, "''");
   return `
-    WITH latest_fvd AS (
-      SELECT fvd.video_id, fvd.view_count, fvd.like_count
-      FROM fact_video_daily fvd
-      JOIN (SELECT video_id, MAX(snapshot_date) AS max_date FROM fact_video_daily GROUP BY video_id) mx
-        ON fvd.video_id = mx.video_id AND fvd.snapshot_date = mx.max_date
-    ),
-    global_rate AS (
-      SELECT COALESCE(SUM(like_count), 0) AS total_likes, COALESCE(SUM(view_count), 0) AS total_views
-      FROM latest_fvd
-    )
     SELECT
-      dv.video_id, dv.title, dv.published_at,
-      lf.view_count, lf.like_count,
-      CASE WHEN lf.view_count > 0
-        THEN (1000 * COALESCE(gr.total_likes * 1.0 / NULLIF(gr.total_views, 0), 0) + lf.like_count)
-             / (1000 + lf.view_count)
-        ELSE 0
-      END AS like_score
+        dv.video_id,
+        dv.title,
+        dv.published_at,
+        dv.latest_view_count AS view_count,
+        dv.latest_like_count AS like_count,
+        bva.attribution_weight*(
+            1000 * (
+                SELECT SUM(latest_like_count)::DOUBLE
+                       / NULLIF(SUM(latest_view_count), 0)
+                FROM dim_video
+            )
+            + dv.latest_like_count
+        )
+        /
+        (1000 + dv.latest_view_count) AS like_rate
     FROM bridge_video_agent bva
-    JOIN dim_video dv ON bva.video_id = dv.video_id
-    JOIN latest_fvd lf ON bva.video_id = lf.video_id
-    CROSS JOIN global_rate gr
-    WHERE bva.agent_name = '${safe}' AND lf.view_count > 0
-    ORDER BY like_score DESC
-    LIMIT ${Math.min(limit, 50)}
+    LEFT JOIN dim_video dv
+        ON bva.video_id = dv.video_id
+    WHERE bva.agent_name = '${safe}'
+    ORDER BY like_rate DESC
+    LIMIT 50;
   `;
 }
 export function agentMostViewedOnQuery(agentName: string): string {
   const safe = agentName.replace(/'/g, "''");
   return `
-    WITH video_conf_total AS (
-      SELECT video_id, SUM(confidence) AS total_conf FROM bridge_video_agent GROUP BY video_id
-    ),
-    latest_fvd AS (
-      SELECT fvd.video_id, fvd.view_count
-      FROM fact_video_daily fvd
-      JOIN (SELECT video_id, MAX(snapshot_date) AS max_date FROM fact_video_daily GROUP BY video_id) mx
-        ON fvd.video_id = mx.video_id AND fvd.snapshot_date = mx.max_date
-    )
-    SELECT dc.channel_id, dc.channel_name,
-      COALESCE(SUM(lf.view_count * bva.confidence / vct.total_conf), 0) AS total_views
-    FROM dim_channel dc
-    JOIN dim_video dv ON dc.channel_id = dv.channel_id
-    JOIN bridge_video_agent bva ON dv.video_id = bva.video_id AND bva.agent_name = '${safe}'
-    JOIN video_conf_total vct ON bva.video_id = vct.video_id
-    LEFT JOIN latest_fvd lf ON dv.video_id = lf.video_id
-    GROUP BY dc.channel_id, dc.channel_name
-    ORDER BY total_views DESC
+    SELECT
+        dv.channel_id,
+        dc.channel_name,
+        FLOOR(SUM(dv.latest_view_count * bva.attribution_weight)) AS total_views
+    FROM bridge_video_agent bva
+    LEFT JOIN dim_video dv
+        ON bva.video_id = dv.video_id
+    LEFT JOIN dim_channel dc
+        ON dc.channel_id = dv.channel_id
+    WHERE bva.agent_name = '${safe}'
+    GROUP BY
+        dv.channel_id,
+        dc.channel_name
+    ORDER BY
+        total_views DESC
+    LIMIT 50
   `;
 }
 export function agentCoOccurringQuery(agentName: string): string {

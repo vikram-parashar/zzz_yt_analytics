@@ -2,7 +2,7 @@ export interface AgentStats {
   name: string; img: string; rank: string; attribute: string;
   speciality: string; faction: string; release_date: string;
   video_count: number; total_views: number; total_likes: number;
-  total_comments: number; latest_view_count: number;
+  total_comments: number;
   on_banner: boolean;
 }
 export interface BannerAgentGain {

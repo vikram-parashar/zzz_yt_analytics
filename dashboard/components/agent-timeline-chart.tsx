@@ -1,15 +1,11 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { LINE_COLORS, toMMYY, fromMonthYear, toMonthYear } from '@/lib/utils';
-import type { AgentStats } from '@/lib/types';
-interface AgentTimelineChartProps {
-  agents: AgentStats[];
-}
-export function AgentTimelineChart({ agents }: AgentTimelineChartProps) {
+export function AgentTimelineChart() {
   const now = new Date();
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
   const [startMonth, setStartMonth] = useState(toMonthYear(sixMonthsAgo));

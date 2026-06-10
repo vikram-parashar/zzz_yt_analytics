@@ -1,9 +1,17 @@
 'use client';
 import Image from 'next/image';
 import Link from 'next/link';
-import type { AgentStats, CoOccurringAgent } from '@/lib/types';
+import type { CoOccurringAgent } from '@/lib/types';
+interface AgentBasic {
+  name: string;
+  img: string;
+  rank: string;
+  attribute: string;
+  speciality: string;
+  faction: string;
+}
 interface CoOccurringAgentsProps {
-  agents: AgentStats[];
+  agents: AgentBasic[];
   coOccurring: CoOccurringAgent[];
   queryTime?: number;
 }
@@ -20,8 +28,9 @@ export function CoOccurringAgents({ agents, coOccurring, queryTime }: CoOccurrin
             {coOccurring.map((ca, i) => {
               const caAgent = agents.find(a => a.name === ca.agent_name);
               return (
-                <Link key={ca.agent_name} prefetch={false}
+                <Link key={ca.agent_name}
                   href={`/agent/${encodeURIComponent(ca.agent_name)}`}
+                  prefetch={false}
                   className="card bg-base-200 shadow-md w-24 hover:shadow-lg transition-shadow no-underline">
                   <div className="card-body p-2 items-center text-center">
                     <div className="avatar">
