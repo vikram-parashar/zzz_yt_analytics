@@ -4,14 +4,18 @@ import { AgentTimelineChart } from '@/components/agent-timeline-chart';
 import { BannerGainSection } from '@/components/banner-gain-section';
 import { RisingCreatorsTable } from '@/components/rising-creators-table';
 import { AgentGrid } from '@/components/agent-grid';
-import { ChartSkeleton, TableSkeleton, GridSkeleton } from '@/components/loading-skeleton';
+import { ChartLoading } from '@/components/chart-loading';
 export const revalidate = 3600;
 export default async function Home() {
-  const [agents, patches, factMinDate] = await Promise.all([
+  const [agentStatsRes, patchRes, factMinDateRes] = await Promise.all([
     fetchAgentStats(),
     fetchDimPatch(),
     fetchFactMinDate(),
   ]);
+  const agents = agentStatsRes.data;
+  const patches = patchRes.data;
+  const factMinDate = factMinDateRes.data;
+  const agentQueryTime = agentStatsRes.durationSec;
   return (
     <div className="min-h-screen bg-base-300 text-base-content flex flex-col">
       <div className="navbar bg-base-100 shadow-lg sticky top-0 z-50">
@@ -23,17 +27,17 @@ export default async function Home() {
         </div>
       </div>
       <main className="max-w-7xl mx-auto p-4 space-y-6 flex-1">
-        <Suspense fallback={<ChartSkeleton />}>
+        <Suspense fallback={<ChartLoading />}>
           <AgentTimelineChart agents={agents} />
         </Suspense>
-        <Suspense fallback={<ChartSkeleton />}>
+        <Suspense fallback={<ChartLoading />}>
           <BannerGainSection agents={agents} patches={patches} factMinDate={factMinDate} />
         </Suspense>
-        <Suspense fallback={<TableSkeleton />}>
+        <Suspense fallback={<ChartLoading />}>
           <RisingCreatorsTable />
         </Suspense>
-        <Suspense fallback={<GridSkeleton />}>
-          <AgentGrid agents={agents} />
+        <Suspense fallback={<ChartLoading />}>
+          <AgentGrid agents={agents} queryTime={agentQueryTime} />
         </Suspense>
       </main>
       <footer className="footer footer-center p-4 bg-base-100 text-base-content/60 mt-8">

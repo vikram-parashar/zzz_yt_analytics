@@ -6,8 +6,8 @@ export async function GET(request: NextRequest) {
     if (!version) {
       return NextResponse.json({ error: 'version parameter required' }, { status: 400 });
     }
-    const data = await fetchBannerGain(version);
-    return NextResponse.json(data);
+    const { data, durationSec } = await fetchBannerGain(version);
+    return NextResponse.json({ data, queryTime: durationSec });
   } catch (error: any) {
     console.error('Banner gain API error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

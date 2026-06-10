@@ -6,8 +6,9 @@ import {
 import { fmt, toDateStr } from '@/lib/utils';
 interface EngagementChartProps {
   data: { date: string; views: number; likes: number }[];
+  queryTime?: number;
 }
-export function EngagementChart({ data }: EngagementChartProps) {
+export function EngagementChart({ data, queryTime }: EngagementChartProps) {
   const engagementData = data.map(d => ({
     date: toDateStr(d.date).slice(5),
     views: Number(d.views ?? 0),
@@ -17,6 +18,9 @@ export function EngagementChart({ data }: EngagementChartProps) {
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body p-4">
         <h2 className="card-title text-sm">Recent Engagement (Past Month)</h2>
+        {queryTime !== undefined && (
+          <p className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</p>
+        )}
         {engagementData.length > 0 ? (
           <div className="h-48 min-h-[192px]">
             <ResponsiveContainer width="100%" height="100%">

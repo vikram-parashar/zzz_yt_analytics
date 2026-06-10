@@ -8,16 +8,24 @@ export function RisingCreatorsTable() {
   const [creatorTimeRange, setCreatorTimeRange] = useState<'week' | 'month' | 'year'>('month');
   const [creatorLimit, setCreatorLimit] = useState(5);
   const [loading, setLoading] = useState(true);
+  const [queryTime, setQueryTime] = useState<number | null>(null);
   useEffect(() => {
     setLoading(true);
     fetch(`/api/rising-creators?timeRange=${creatorTimeRange}`)
       .then(r => r.json())
-      .then(data => { setRisingCreators(data); setLoading(false); })
+      .then((res: any) => {
+        setRisingCreators(res.data ?? res);
+        setQueryTime(res.queryTime ?? null);
+        setLoading(false);
+      })
       .catch(err => { console.error(err); setLoading(false); });
   }, [creatorTimeRange]);
   return (
     <section>
       <h2 className="text-2xl font-bold mb-4">Rising ZZZ Creators</h2>
+      {queryTime !== null && (
+        <p className="text-xs text-base-content/50 mb-2">Query took {queryTime.toFixed(3)}s</p>
+      )}
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body p-4">
           <div className="flex flex-wrap items-center gap-3 mb-2">

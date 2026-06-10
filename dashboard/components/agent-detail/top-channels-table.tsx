@@ -3,12 +3,16 @@ import { fmt } from '@/lib/utils';
 import type { AgentMostViewedOn } from '@/lib/types';
 interface TopChannelsTableProps {
   channels: AgentMostViewedOn[];
+  queryTime?: number;
 }
-export function TopChannelsTable({ channels }: TopChannelsTableProps) {
+export function TopChannelsTable({ channels, queryTime }: TopChannelsTableProps) {
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body p-4">
         <h2 className="card-title text-sm">Top Channels by Views</h2>
+        {queryTime !== undefined && (
+          <p className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</p>
+        )}
         {channels.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="table table-sm">

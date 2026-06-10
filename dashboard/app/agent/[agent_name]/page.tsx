@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { fetchAgentStats, fetchAgentBanners, fetchAgentEngagement, fetchAgentVideoTimeline, fetchAgentMostLiked, fetchAgentMostViewedOn, fetchAgentCoOccurring } from '@/lib/fetch';
-import { AgentDetailSkeleton } from '@/components/loading-skeleton';
+import { ChartLoading } from '@/components/chart-loading';
 import { EngagementChart } from '@/components/agent-detail/engagement-chart';
 import { VideoTimelineChart } from '@/components/agent-detail/video-timeline-chart';
 import { MostLikedTable } from '@/components/agent-detail/most-liked-table';
@@ -20,7 +20,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
   const startDate = sixMonthsAgo.toISOString().slice(0, 10);
   const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-  const [allAgents, videoTimeline, engagement, banners, mostLiked, mostViewedOn, coOccurring] = await Promise.all([
+  const [allAgentsRes, videoTimelineRes, engagementRes, bannersRes, mostLikedRes, mostViewedOnRes, coOccurringRes] = await Promise.all([
     fetchAgentStats(),
     fetchAgentVideoTimeline(decodedName, startDate, endDate),
     fetchAgentEngagement(decodedName),
@@ -29,6 +29,13 @@ export default async function AgentDetailPage({ params }: PageProps) {
     fetchAgentMostViewedOn(decodedName),
     fetchAgentCoOccurring(decodedName),
   ]);
+  const allAgents = allAgentsRes.data;
+  const videoTimeline = videoTimelineRes.data;
+  const engagement = engagementRes.data;
+  const banners = bannersRes.data;
+  const mostLiked = mostLikedRes.data;
+  const mostViewedOn = mostViewedOnRes.data;
+  const coOccurring = coOccurringRes.data;
   const agent = allAgents.find(a => a.name === decodedName) || null;
   if (!agent) {
     return (
@@ -98,27 +105,28 @@ export default async function AgentDetailPage({ params }: PageProps) {
             </div>
           </div>
         </div>
-        <Suspense fallback={<AgentDetailSkeleton />}>
-          <EngagementChart data={engagement} />
+        <Suspense fallback={<ChartLoading />}>
+          <EngagementChart data={engagement} queryTime={engagementRes.durationSec} />
         </Suspense>
-        <Suspense fallback={<AgentDetailSkeleton />}>
+        <Suspense fallback={<ChartLoading />}>
           <VideoTimelineChart
             agentName={decodedName}
             attribute={agent.attribute}
             initialData={videoTimeline}
             banners={banners}
+            queryTime={videoTimelineRes.durationSec}
           />
         </Suspense>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Suspense fallback={<AgentDetailSkeleton />}>
-            <MostLikedTable videos={mostLiked} />
+          <Suspense fallback={<ChartLoading />}>
+            <MostLikedTable videos={mostLiked} queryTime={mostLikedRes.durationSec} />
           </Suspense>
-          <Suspense fallback={<AgentDetailSkeleton />}>
-            <TopChannelsTable channels={mostViewedOn} />
+          <Suspense fallback={<ChartLoading />}>
+            <TopChannelsTable channels={mostViewedOn} queryTime={mostViewedOnRes.durationSec} />
           </Suspense>
         </div>
-        <Suspense fallback={<AgentDetailSkeleton />}>
-          <CoOccurringAgents agents={allAgents} coOccurring={coOccurring} />
+        <Suspense fallback={<ChartLoading />}>
+          <CoOccurringAgents agents={allAgents} coOccurring={coOccurring} queryTime={coOccurringRes.durationSec} />
         </Suspense>
       </main>
       <footer className="footer footer-center p-4 bg-base-100 text-base-content/60 mt-8">

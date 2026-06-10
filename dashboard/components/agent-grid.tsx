@@ -6,8 +6,9 @@ import { ATTR_COLORS, fmt } from '@/lib/utils';
 import type { AgentStats, SortField, SortDir } from '@/lib/types';
 interface AgentGridProps {
   agents: AgentStats[];
+  queryTime?: number;
 }
-export function AgentGrid({ agents }: AgentGridProps) {
+export function AgentGrid({ agents, queryTime }: AgentGridProps) {
   const [sortField, setSortField] = useState<SortField>('total_views');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [filterRank, setFilterRank] = useState<string>('all');
@@ -34,6 +35,9 @@ export function AgentGrid({ agents }: AgentGridProps) {
     <section>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <h2 className="text-2xl font-bold mr-4">Agents</h2>
+        {queryTime !== undefined && (
+          <span className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</span>
+        )}
         <input type="text" placeholder="Search agent..."
           className="input input-sm input-bordered w-48"
           value={search} onChange={e => setSearch(e.target.value)} />

@@ -5,12 +5,16 @@ import type { AgentStats, CoOccurringAgent } from '@/lib/types';
 interface CoOccurringAgentsProps {
   agents: AgentStats[];
   coOccurring: CoOccurringAgent[];
+  queryTime?: number;
 }
-export function CoOccurringAgents({ agents, coOccurring }: CoOccurringAgentsProps) {
+export function CoOccurringAgents({ agents, coOccurring, queryTime }: CoOccurringAgentsProps) {
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body p-4">
         <h2 className="card-title text-sm">Agents Discussed Most Alongside</h2>
+        {queryTime !== undefined && (
+          <p className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</p>
+        )}
         {coOccurring.length > 0 ? (
           <div className="flex flex-wrap gap-3">
             {coOccurring.map((ca, i) => {

@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const [videoTimeline, engagement, banners, mostLiked, mostViewedOn, coOccurring] = await Promise.all([
       startDate && endDate
         ? fetchAgentVideoTimeline(agentName, startDate, endDate)
-        : Promise.resolve([]),
+        : Promise.resolve({ data: [], durationSec: 0 }),
       fetchAgentEngagement(agentName),
       fetchAgentBanners(agentName),
       fetchAgentMostLiked(agentName, 50),
@@ -26,12 +26,20 @@ export async function GET(request: NextRequest) {
       fetchAgentCoOccurring(agentName),
     ]);
     return NextResponse.json({
-      videoTimeline,
-      engagement,
-      banners,
-      mostLiked,
-      mostViewedOn,
-      coOccurring,
+      videoTimeline: videoTimeline.data,
+      engagement: engagement.data,
+      banners: banners.data,
+      mostLiked: mostLiked.data,
+      mostViewedOn: mostViewedOn.data,
+      coOccurring: coOccurring.data,
+      queryTimes: {
+        videoTimeline: videoTimeline.durationSec,
+        engagement: engagement.durationSec,
+        banners: banners.durationSec,
+        mostLiked: mostLiked.durationSec,
+        mostViewedOn: mostViewedOn.durationSec,
+        coOccurring: coOccurring.durationSec,
+      },
     });
   } catch (error: any) {
     console.error('Agent detail API error:', error);

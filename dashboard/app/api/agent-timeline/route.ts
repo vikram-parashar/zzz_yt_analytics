@@ -7,8 +7,8 @@ export async function GET(request: NextRequest) {
     if (!startDate || !endDate) {
       return NextResponse.json({ error: 'startDate and endDate parameters required' }, { status: 400 });
     }
-    const data = await fetchTopAgentsTimeline(startDate, endDate);
-    return NextResponse.json(data);
+    const { data, durationSec } = await fetchTopAgentsTimeline(startDate, endDate);
+    return NextResponse.json({ data, queryTime: durationSec });
   } catch (error: any) {
     console.error('Agent timeline API error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

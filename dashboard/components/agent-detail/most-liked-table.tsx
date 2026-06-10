@@ -5,13 +5,17 @@ import { fmt } from '@/lib/utils';
 import type { MostLikedVideo } from '@/lib/types';
 interface MostLikedTableProps {
   videos: MostLikedVideo[];
+  queryTime?: number;
 }
-export function MostLikedTable({ videos }: MostLikedTableProps) {
+export function MostLikedTable({ videos, queryTime }: MostLikedTableProps) {
   const [likedVideoLimit, setLikedVideoLimit] = useState(5);
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body p-4">
         <h2 className="card-title text-sm">Most Liked Videos (Bayesian)</h2>
+        {queryTime !== undefined && (
+          <p className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</p>
+        )}
         {videos.length > 0 ? (
           <div className="space-y-2">
             <div className="overflow-x-auto">

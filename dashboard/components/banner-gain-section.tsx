@@ -20,6 +20,7 @@ interface BannerGainSectionProps {
 export function BannerGainSection({ agents, patches, factMinDate }: BannerGainSectionProps) {
   const [selectedBannerVersion, setSelectedBannerVersion] = useState<string | null>(null);
   const [bannerGainData, setBannerGainData] = useState<BannerGainRow[]>([]);
+  const [queryTime, setQueryTime] = useState<number | null>(null);
   const bannerInitialized = useRef(false);
   const bannerVersions = useMemo(() => {
     const seen = new Map<string, DimPatch>();
@@ -42,7 +43,10 @@ export function BannerGainSection({ agents, patches, factMinDate }: BannerGainSe
     if (!selectedBannerVersion) return;
     fetch(`/api/banner-gain?version=${encodeURIComponent(selectedBannerVersion)}`)
       .then(r => r.json())
-      .then(setBannerGainData)
+      .then((res: any) => {
+        setBannerGainData(res.data ?? res);
+        setQueryTime(res.queryTime ?? null);
+      })
       .catch(console.error);
   }, [selectedBannerVersion]);
   const selectedBannerData = useMemo(() => {
@@ -65,6 +69,9 @@ export function BannerGainSection({ agents, patches, factMinDate }: BannerGainSe
   return (
     <section>
       <h2 className="text-2xl font-bold mb-2">Agents with Sudden Popularity in Banners</h2>
+      {queryTime !== null && (
+        <p className="text-xs text-base-content/50 mb-2">Query took {queryTime.toFixed(3)}s</p>
+      )}
       {bannerVersions.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
           {bannerVersions.map(bv => (

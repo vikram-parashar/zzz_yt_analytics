@@ -16,13 +16,16 @@ export function AgentTimelineChart({ agents }: AgentTimelineChartProps) {
   const [endMonth, setEndMonth] = useState(toMonthYear(now));
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [agentNames, setAgentNames] = useState<string[]>([]);
+  const [queryTime, setQueryTime] = useState<number | null>(null);
   useEffect(() => {
     const sd = fromMonthYear(startMonth).toISOString().slice(0, 10);
     const ed = new Date(fromMonthYear(endMonth).getFullYear(), fromMonthYear(endMonth).getMonth() + 1, 0).toISOString().slice(0, 10);
     fetch(`/api/agent-timeline?startDate=${sd}&endDate=${ed}`)
       .then(r => r.json())
-      .then((rows: any[]) => {
-        const names = [...new Set(rows.map(d => d.agent_name))];
+      .then((res: any) => {
+        const rows = res.data ?? res;
+        const time = res.queryTime ?? null;
+        const names = [...new Set(rows.map((d: any) => d.agent_name))];
         const byMonth: Record<string, any> = {};
         for (const d of rows) {
           const m = String(d.month).slice(0, 7);
@@ -31,12 +34,16 @@ export function AgentTimelineChart({ agents }: AgentTimelineChartProps) {
         }
         setTimelineData(Object.values(byMonth).sort((a: any, b: any) => a.month.localeCompare(b.month)));
         setAgentNames(names);
+        setQueryTime(time);
       })
       .catch(console.error);
   }, [startMonth, endMonth]);
   return (
     <section>
       <h2 className="text-2xl font-bold mb-4">Agent Popularity &amp; Trends</h2>
+      {queryTime !== null && (
+        <p className="text-xs text-base-content/50 mb-2">Query took {queryTime.toFixed(3)}s</p>
+      )}
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body p-4">
           <div className="flex flex-wrap items-center gap-3">

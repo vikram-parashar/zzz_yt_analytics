@@ -12,8 +12,9 @@ interface VideoTimelineChartProps {
   attribute: string;
   initialData: { month: string; video_cnt: number }[];
   banners: AgentBannerPeriod[];
+  queryTime?: number;
 }
-export function VideoTimelineChart({ agentName, attribute, initialData, banners }: VideoTimelineChartProps) {
+export function VideoTimelineChart({ agentName, attribute, initialData, banners, queryTime }: VideoTimelineChartProps) {
   const now = new Date();
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
   const [startMonth, setStartMonth] = useState(toMonthYear(sixMonthsAgo));
@@ -46,6 +47,9 @@ export function VideoTimelineChart({ agentName, attribute, initialData, banners 
       <div className="card-body p-4">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="card-title text-sm">Videos Published Per Month</h2>
+          {queryTime !== undefined && (
+            <span className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</span>
+          )}
           <div className="flex gap-2 ml-auto items-center">
             <input type="month" className="input input-sm input-bordered w-36"
               value={startMonth} onChange={e => setStartMonth(e.target.value)} />
