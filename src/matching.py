@@ -56,7 +56,7 @@ def _compute_confidence(video_row, aliases) -> dict[str, int]:
     title = normalize(str(video_row.title))
     description = normalize(str(video_row.description))
 
-    tags_raw = video_row.tags
+    tags_raw = getattr(video_row, "tags", None)
     tags = tags_raw if isinstance(tags_raw, list) else []
     tags_text = normalize(" ".join(tags))
 

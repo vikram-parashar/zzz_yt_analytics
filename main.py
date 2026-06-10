@@ -56,9 +56,9 @@ logger = get_logger("main")
 BACKFILL_TOPIC = "Zenless Zone Zero"
 BACKFILL_START_DATE = "2024-01-01"
 
-TYPE1_MAX_SEARCHES = 60
+TYPE1_MAX_SEARCHES = 50
 
-TYPE2_MAX_SEARCHES = 20
+TYPE2_MAX_SEARCHES = 15
 TYPE2_SEARCHES_PER_MONTH = 10
 
 SEARCH_DELAY_SECONDS = 2.0
@@ -126,7 +126,6 @@ def _run_backfill_type1():
                 set_pipeline_info("type1_last_day", yesterday.to_date_string())
                 logger.info(
                     f"Type I COMPLETE! Reached yesterday ({yesterday.to_date_string()}). "
-                    f"Total new: {total_new}"
                 )
                 return
 
@@ -157,7 +156,6 @@ def _run_backfill_type1():
         logger.info(
             f"Type I paused after {searches_used} searches. "
             f"Last day: {get_pipeline_info('type1_last_day')}. "
-            f"Total new: {total_new}"
         )
 
 
@@ -202,7 +200,6 @@ def _run_backfill_type2():
         cursor = pendulum.parse(BACKFILL_START_DATE).start_of("month")
         searches_done_in_month = 0
 
-    total_new = 0
     total_searches = 0
 
     with get_db() as con:
@@ -249,13 +246,11 @@ def _run_backfill_type2():
                 searches_done_in_month += 1
                 remaining_for_month -= 1
 
-                n_new = _ingest_search_results(con, items, discovery_type="random")
-                total_new += n_new
+                _ingest_search_results(con, items, discovery_type="random")
 
                 logger.info(
                     f"[Type II] {cursor.format('YYYY-MM')} search #{searches_done_in_month}/{target_count} | "
                     f"before={rand_ts.format('YYYY-MM-DD HH:mm')} | "
-                    f"{len(items)} raw -> {n_new} new | "
                     f"total: {total_searches}/{TYPE2_MAX_SEARCHES}"
                 )
 
@@ -265,15 +260,11 @@ def _run_backfill_type2():
             if total_searches >= TYPE2_MAX_SEARCHES:
                 logger.info(
                     f"Type II paused after {total_searches} searches at {cursor.format('YYYY-MM')}. "
-                    f"Total new: {total_new}"
                 )
                 return
 
             if is_current_month:
-                logger.info(
-                    f"Type II current month {cursor.format('YYYY-MM')} done. "
-                    f"Total new: {total_new}, searches: {total_searches}"
-                )
+                logger.info(f"Type II current month {cursor.format('YYYY-MM')} done. ")
                 return
 
             cursor = cursor.add(months=1)
@@ -390,7 +381,6 @@ def _run_daily_discover():
     type2_done = get_pipeline_info("type2_completed", "false") == "true"
 
     now = pendulum.now()
-    total_new = 0
 
     with get_db() as con:
         if type1_done:
@@ -403,9 +393,7 @@ def _run_daily_discover():
                 published_before=published_before,
                 order="viewCount",
             )
-            n_new = _ingest_search_results(con, items, discovery_type="popular")
-            total_new += n_new
-            logger.info(f"[Daily Type I] {len(items)} raw -> {n_new} new")
+            _ingest_search_results(con, items, discovery_type="popular")
         else:
             logger.info("[Daily Type I] skipped — Type I backfill not complete")
 
@@ -426,17 +414,13 @@ def _run_daily_discover():
                     published_before=published_before,
                     order="date",
                 )
-                n_new = _ingest_search_results(con, items, discovery_type="random")
-                total_new += n_new
-                logger.info(f"[Daily Type II] {len(items)} raw -> {n_new} new")
+                _ingest_search_results(con, items, discovery_type="random")
             else:
                 logger.info(
                     f"[Daily Type II] skipped — day={now.day} (runs when day%3==0)"
                 )
         else:
             logger.info("[Daily Type II] skipped — Type II backfill not complete")
-
-    logger.info(f"Daily discovery: {total_new} new videos")
 
 
 def enrich():
