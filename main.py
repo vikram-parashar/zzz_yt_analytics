@@ -8,8 +8,7 @@ Usage:
     uv run main.py init-tables        Create DuckDB tables only
     uv run main.py scrape-agents      Scrape agent data from wiki
     uv run main.py scrape-banners     Scrape banner schedule from game8.co
-    uv run main.py enrich-videos      Enrich video metadata
-    uv run main.py enrich-channels    Enrich channel metadata
+    uv run main.py enrich             Enrich video and channel metadata
     uv run main.py match              Build video-agent associations
     uv run main.py build-agent-daily  Rebuild fact_agent_daily aggregates
     uv run main.py query <sql>        Run SQL queries in the warehouse
@@ -33,6 +32,7 @@ from src.utils import (
 )
 from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
 from src.warehouse import (
+    get_enrichment_ids,
     get_pipeline_info,
     init_tables,
     insert_discovered_videos,
@@ -42,12 +42,9 @@ from src.warehouse import (
     _video_search_to_df,
     _video_stats_to_df,
     _channel_stats_to_df,
-    get_video_ids,
-    get_all_channel_ids,
     start_pipeline_run,
     finish_pipeline_run,
     did_pipeline_run_today,
-    update_latest_video_counts,
     build_fact_agent_daily,
 )
 from src.agents import scrape_and_load
@@ -290,7 +287,7 @@ def _run_backfill_type2():
 
 
 def backfill():
-    """Run both Type I and Type II backfill in sequence, then enrich + match."""
+    """Run both Type I and Type II backfill in sequence"""
     type1_done = get_pipeline_info("type1_completed", "false") == "true"
     type2_done = get_pipeline_info("type2_completed", "false") == "true"
 
@@ -306,12 +303,9 @@ def backfill():
         if not type2_done:
             _run_backfill_type2()
 
-        enrich_videos()
-        enrich_channels()
-
+        today = pendulum.now().to_date_string()
         with get_db() as con:
-            update_latest_video_counts(con)
-            build_fact_agent_daily(con)
+            build_fact_agent_daily(con, snapshot_date=today)
 
         finish_pipeline_run(run_id)
     except Exception as e:
@@ -320,7 +314,7 @@ def backfill():
 
 
 def backfill_popular():
-    """Run only Type I backfill (popular / viewCount), then enrich + match."""
+    """Run only Type I backfill (popular / viewCount)"""
     if get_pipeline_info("type1_completed", "false") == "true":
         logger.info("Type I backfill already completed — skipping")
         return
@@ -328,11 +322,9 @@ def backfill_popular():
     run_id = start_pipeline_run("backfill-popular")
     try:
         _run_backfill_type1()
-        enrich_videos()
-        enrich_channels()
+        today = pendulum.now().to_date_string()
         with get_db() as con:
-            update_latest_video_counts(con)
-            build_fact_agent_daily(con)
+            build_fact_agent_daily(con, snapshot_date=today)
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -340,7 +332,7 @@ def backfill_popular():
 
 
 def backfill_random():
-    """Run only Type II backfill (random / date), then enrich + match."""
+    """Run only Type II backfill (random / date)"""
     if get_pipeline_info("type2_completed", "false") == "true":
         logger.info("Type II backfill already completed — skipping")
         return
@@ -348,11 +340,9 @@ def backfill_random():
     run_id = start_pipeline_run("backfill-random")
     try:
         _run_backfill_type2()
-        enrich_videos()
-        enrich_channels()
+        today = pendulum.now().to_date_string()
         with get_db() as con:
-            update_latest_video_counts(con)
-            build_fact_agent_daily(con)
+            build_fact_agent_daily(con, snapshot_date=today)
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -360,7 +350,7 @@ def backfill_random():
 
 
 def daily():
-    """Daily pipeline: scrape agents -> discover -> enrich -> match -> aggregate.
+    """Daily pipeline: scrape agents -> discover -> match -> aggregate.
 
     Discovery strategy depends on which backfill types are complete:
       - Type I complete:  fetch once with order='viewCount',
@@ -380,12 +370,10 @@ def daily():
 
         _run_daily_discover()
 
-        enrich_videos()
-        enrich_channels()
+        enrich()
 
         today = pendulum.now().to_date_string()
         with get_db() as con:
-            update_latest_video_counts(con)
             build_fact_agent_daily(con, snapshot_date=today)
 
         finish_pipeline_run(run_id)
@@ -451,32 +439,30 @@ def _run_daily_discover():
     logger.info(f"Daily discovery: {total_new} new videos")
 
 
-def enrich_videos():
-    """Fetch up-to-date stats for all known videos."""
+def enrich():
     with get_db() as con:
-        ids = get_video_ids(con)
-        if not ids:
-            logger.info("No videos to enrich")
+        video_ids, channel_ids = get_enrichment_ids(con)
+        if not video_ids and not channel_ids:
+            logger.info("Nothing to enrich")
             return
 
-        for chunk in chunk_list(ids, 50):
-            items = fetch_video_stats(chunk)
-            df = _video_stats_to_df(items)
-            upsert_video_details(con, df)
+        if video_ids:
+            logger.info(f"Enriching {len(video_ids)} videos")
+            total_videos = 0
+            for chunk in chunk_list(video_ids, 50):
+                items = fetch_video_stats(chunk)
+                df = _video_stats_to_df(items)
+                upsert_video_details(con, df)
+                total_videos += len(df)
+            logger.info(f"Enriched {total_videos} videos")
 
-
-def enrich_channels():
-    """Fetch channel details and daily stats for ALL known channels."""
-    with get_db() as con:
-        ids = get_all_channel_ids(con)
-        if not ids:
-            logger.info("No channels to enrich")
-            return
-
-        for chunk in chunk_list(ids, 50):
-            items = fetch_channel_stats(chunk)
-            df = _channel_stats_to_df(items)
-            upsert_channel_details(con, df)
+        if channel_ids:
+            logger.info(f"Enriching {len(channel_ids)} channels")
+            for chunk in chunk_list(channel_ids, 50):
+                items = fetch_channel_stats(chunk)
+                df = _channel_stats_to_df(items)
+                upsert_channel_details(con, df)
+            logger.info(f"Enriched {len(channel_ids)} channels")
 
 
 def status():
@@ -554,7 +540,6 @@ def backup():
 def build_agent_daily_cmd():
     """Rebuild fact_agent_daily from bridge + fact_video_daily."""
     with get_db() as con:
-        update_latest_video_counts(con)
         build_fact_agent_daily(con)
 
 
@@ -567,8 +552,7 @@ COMMANDS = {
     "init-tables": init_tables,
     "scrape-agents": run_tracked("scrape-agents")(scrape_and_load),
     "scrape-banners": run_tracked("scrape-banners")(scrape_banners),
-    "enrich-videos": run_tracked("enrich-videos")(enrich_videos),
-    "enrich-channels": run_tracked("enrich-channels")(enrich_channels),
+    "enrich": run_tracked("enrich")(enrich),
     "match": run_tracked("match")(match_all_videos),
     "build-agent-daily": run_tracked("build-agent-daily")(build_agent_daily_cmd),
     "status": status,

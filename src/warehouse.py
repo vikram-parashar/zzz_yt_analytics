@@ -1,4 +1,5 @@
 import re
+import duckdb
 import pandas as pd
 import pendulum
 
@@ -392,23 +393,54 @@ def upsert_channel_details(con, df: pd.DataFrame):
 
 
 
-def get_video_ids(con) -> list[str]:
+def get_enrichment_ids(con) -> tuple[list[str], list[str]]:
+    query = """
+        WITH target_videos AS (
+            SELECT DISTINCT bva.video_id, dv.channel_id
+            FROM bridge_video_agent bva
+            JOIN dim_video dv
+                ON bva.video_id = dv.video_id
+            WHERE
+                CASE
+                    WHEN EXTRACT(DAY FROM CURRENT_DATE) = 1 THEN TRUE
+
+                    WHEN EXTRACT(ISODOW FROM CURRENT_DATE) = 1 THEN
+                        dv.published_at >= CURRENT_DATE - INTERVAL '3 months'
+
+                    ELSE
+                        dv.published_at >= CURRENT_DATE - INTERVAL '30 days'
+                END
+        ),
+
+        missing_view_videos AS (
+            SELECT video_id, channel_id
+            FROM dim_video
+            WHERE latest_view_count IS NULL
+        )
+
+        SELECT DISTINCT video_id, channel_id
+        FROM (
+            SELECT video_id, channel_id FROM target_videos
+            UNION ALL
+            SELECT video_id, channel_id FROM missing_view_videos
+        ) t
+        WHERE video_id IS NOT NULL
+    """
+
     try:
-        df = con.sql("SELECT video_id FROM dim_video").to_df()
-        return list(df["video_id"])
+        df = con.execute(query).fetchdf()
     except Exception:
-        logger.exception("Failed to fetch video IDs")
-        return []
+        logger.exception("Failed to fetch enrichment IDs")
+        return [], []
 
+    if df.empty:
+        logger.info("No videos to enrich")
+        return [], []
 
-def get_all_channel_ids(con) -> list[str]:
-    try:
-        df = con.sql("SELECT channel_id FROM dim_channel").to_df()
-        return list(df["channel_id"])
-    except Exception:
-        logger.exception("Failed to fetch channel IDs")
-        return []
+    video_ids = df["video_id"].astype(str).unique().tolist()
+    channel_ids = df["channel_id"].dropna().astype(str).unique().tolist()
 
+    return video_ids, channel_ids
 
 def get_agent_names(con) -> list[str]:
     try:
@@ -433,21 +465,6 @@ def update_attribution_weights(con):
           AND totals.total_conf > 0
     """)
 
-
-def update_latest_video_counts(con):
-    con.execute("""
-        UPDATE dim_video AS dv
-        SET latest_view_count = latest.view_count,
-            latest_like_count = latest.like_count,
-            latest_comment_count = latest.comment_count
-        FROM (
-            SELECT DISTINCT ON (video_id)
-                   video_id, view_count, like_count, comment_count
-            FROM fact_video_daily
-            ORDER BY video_id, snapshot_date DESC
-        ) AS latest
-        WHERE dv.video_id = latest.video_id
-    """)
 
 
 def build_fact_agent_daily(con, snapshot_date: str | None = None):
