@@ -34,14 +34,8 @@ jobs:
       - name: Install local modules
         run: uv pip install -e .
 
-      - name: Run backfill (no-op if already completed)
-        run: uv run python main.py backfill
-
       - name: Run daily pipeline
         run: uv run python main.py daily
-
-      - name: Create Backup Snapshot
-        run: uv run python main.py backup
 
       - name: Upload versioned artifact
         uses: actions/upload-artifact@v4

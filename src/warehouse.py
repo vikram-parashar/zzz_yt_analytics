@@ -290,8 +290,6 @@ def _channel_stats_to_df(items: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-
-
 def insert_discovered_videos(con, df: pd.DataFrame, discovery_type: str = "popular"):
     if df.empty:
         return []
@@ -381,8 +379,6 @@ def upsert_channel_details(con, df: pd.DataFrame):
     )
 
 
-
-
 def get_enrichment_ids(con) -> tuple[list[str], list[str]]:
     query = """
         WITH target_videos AS (
@@ -441,8 +437,6 @@ def get_agent_names(con) -> list[str]:
         return []
 
 
-
-
 def update_attribution_weights(con):
     con.execute("""
         UPDATE bridge_video_agent AS b
@@ -458,37 +452,79 @@ def update_attribution_weights(con):
 
 
 def build_fact_agent_daily(con, snapshot_date: str | None = None):
-    if snapshot_date:
-        con.execute(
-            "DELETE FROM fact_agent_daily WHERE snapshot_date = ?",
-            [snapshot_date],
-        )
-    else:
+    if snapshot_date is None:
         con.execute("DELETE FROM fact_agent_daily")
 
+        start_date = con.execute(
+            """
+            SELECT MIN(snapshot_date)
+            FROM fact_video_daily
+            """
+        ).fetchone()[0]
+
+        if start_date is None:
+            logger.info("No rows in fact_video_daily")
+            return
+
+        date_itr = pendulum.parse(str(start_date)).date()
+        end_date = pendulum.today().date()
+
+        while date_itr <= end_date:
+            build_fact_agent_daily(con, date_itr.to_date_string())
+            date_itr = date_itr.add(days=1)
+
+        return
+
     con.execute(
-        f"""
-        INSERT INTO fact_agent_daily
-            (agent_name, snapshot_date,
-             attributed_views, attributed_likes, attributed_comments, video_count)
-        SELECT
-            b.agent_name,
-            f.snapshot_date,
-            ROUND(SUM(b.attribution_weight * f.view_count))     AS attributed_views,
-            ROUND(SUM(b.attribution_weight * f.like_count))     AS attributed_likes,
-            ROUND(SUM(b.attribution_weight * f.comment_count))  AS attributed_comments,
-            COUNT(DISTINCT b.video_id)                    AS video_count
-        FROM bridge_video_agent AS b
-        JOIN fact_video_daily   AS f
-          ON b.video_id = f.video_id
-        {"WHERE f.snapshot_date = ?" if snapshot_date else ""}
-        GROUP BY b.agent_name, f.snapshot_date
-    """,
-        [snapshot_date] if snapshot_date else [],
+        """
+        DELETE FROM fact_agent_daily
+        WHERE snapshot_date = ?
+        """,
+        [snapshot_date],
     )
 
-    row_count = con.execute("SELECT COUNT(*) FROM fact_agent_daily").fetchone()[0]
-    logger.info(
-        f"Built fact_agent_daily ({'date=' + snapshot_date if snapshot_date else 'full rebuild'}): "
-        f"{row_count} rows"
+    con.execute(
+        """
+        INSERT INTO fact_agent_daily
+            (
+                agent_name,
+                snapshot_date,
+                attributed_views,
+                attributed_likes,
+                attributed_comments,
+                video_count
+            )
+        SELECT
+            b.agent_name,
+            ? AS snapshot_date,
+            ROUND(SUM(b.attribution_weight * f.view_count)),
+            ROUND(SUM(b.attribution_weight * f.like_count)),
+            ROUND(SUM(b.attribution_weight * f.comment_count)),
+            COUNT(DISTINCT b.video_id)
+        FROM bridge_video_agent b
+        JOIN (
+            SELECT DISTINCT ON (video_id)
+                video_id,
+                view_count,
+                like_count,
+                comment_count
+            FROM fact_video_daily
+            WHERE snapshot_date <= ?
+            ORDER BY video_id, snapshot_date DESC
+        ) f
+            ON b.video_id = f.video_id
+        GROUP BY b.agent_name
+        """,
+        [snapshot_date, snapshot_date],
     )
+
+    row_count = con.execute(
+        """
+        SELECT COUNT(*)
+        FROM fact_agent_daily
+        WHERE snapshot_date = ?
+        """,
+        [snapshot_date],
+    ).fetchone()[0]
+
+    logger.info(f"Built fact_agent_daily(date={snapshot_date}): {row_count} rows")

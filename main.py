@@ -1,73 +1,62 @@
 """
 Usage:
     uv run main.py setup              First-time warehouse setup
-    uv run main.py daily              Daily incremental pipeline (includes match)
-    uv run main.py backfill           Run both Type I + Type II backfill (60+20 searches/day)
-    uv run main.py backfill-popular   Type I backfill: popular by viewCount, 60 searches/day
-    uv run main.py backfill-random    Type II backfill: random by date, 20 searches/day
+    uv run main.py daily              Daily pipeline (auto-selects backfill or incremental)
     uv run main.py init-tables        Create DuckDB tables only
     uv run main.py scrape-agents      Scrape agent data from wiki
     uv run main.py scrape-banners     Scrape banner schedule from game8.co
     uv run main.py enrich             Enrich video and channel metadata
-    uv run main.py match-remaining   Match unmatched videos against agents
+    uv run main.py match-remaining    Match unmatched videos against agents
     uv run main.py match-all          Re-match ALL videos against agents
     uv run main.py build-agent-daily  Rebuild fact_agent_daily aggregates
-    uv run main.py query <sql>        Run SQL queries in the warehouse
-    uv run main.py backup             create a backup copy from motherduck
+    uv run main.py backup             Create a backup copy from motherduck
     uv run main.py status             Show pipeline status
+    uv run main.py query <sql>        Run SQL queries in the warehouse
 """
 
 import functools
-import random
-import sys
-import time
-import pendulum
 from pathlib import Path
-import shutil
-from src.utils import (
-    get_logger,
-    get_db,
-    chunk_list,
-    MOTHERDUCK_TOKEN,
-    MOTHERDUCK_DB,
-)
-from src.youtube import search_videos, fetch_video_stats, fetch_channel_stats
+import random
+import time
+from pandas.core.frame import sys
+import pendulum
+from src.matching import match_all, match_remaining
+from src.utils import MOTHERDUCK_DB, MOTHERDUCK_TOKEN, chunk_list, get_db, get_logger
 from src.warehouse import (
+    _channel_stats_to_df,
+    _video_stats_to_df,
+    build_fact_agent_daily,
+    did_pipeline_run_today,
     get_enrichment_ids,
     get_pipeline_info,
     init_tables,
     insert_discovered_videos,
-    set_pipeline_info,
-    upsert_video_details,
-    upsert_channel_details,
     _video_search_to_df,
-    _video_stats_to_df,
-    _channel_stats_to_df,
     start_pipeline_run,
     finish_pipeline_run,
-    did_pipeline_run_today,
-    build_fact_agent_daily,
+    upsert_channel_details,
+    upsert_video_details,
 )
 from src.agents import scrape_and_load
-from src.matching import match_remaining, match_all
 from src.banners import scrape_banners
+import shutil
+
+from src.youtube import fetch_channel_stats, fetch_video_stats, search_videos
 
 logger = get_logger("main")
 
 BACKFILL_TOPIC = "Zenless Zone Zero"
 BACKFILL_START_DATE = "2024-01-01"
 
-TYPE1_MAX_SEARCHES = 50
+TYPE1_MAX_SEARCHES = 0
 
-TYPE2_MAX_SEARCHES = 15
+TYPE2_MAX_SEARCHES = 0
 TYPE2_SEARCHES_PER_MONTH = 10
 
 SEARCH_DELAY_SECONDS = 2.0
 
 
 def run_tracked(pipeline_name: str):
-    """Decorator that wraps a pipeline function with pipeline_runs tracking."""
-
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
@@ -85,8 +74,7 @@ def run_tracked(pipeline_name: str):
     return decorator
 
 
-def _ingest_search_results(con, items, discovery_type: str) -> int:
-    """Convert search items to DataFrame and insert to warehouse. Returns count of new videos."""
+def _ingest_search_results(con, items, discovery_type: str):
     if not items:
         return 0
     df = _video_search_to_df(items)
@@ -94,19 +82,10 @@ def _ingest_search_results(con, items, discovery_type: str) -> int:
 
 
 def setup():
-    """One-time setup: init tables + scrape agents."""
     init_tables()
-    scrape_and_load()
-    scrape_banners()
 
 
 def _run_backfill_type1():
-    """Type I: Daily windows from BACKFILL_START_DATE, order=viewCount.
-
-    Progress tracked in pipeline_info:
-      - type1_last_day:   last fully-processed date string (e.g. '2024-03-15')
-      - type1_completed:  'true' when we've reached yesterday
-    """
     if get_pipeline_info("type1_completed", "false") == "true":
         logger.info("Type I backfill already completed — skipping")
         return
@@ -147,7 +126,7 @@ def _run_backfill_type1():
             _ingest_search_results(con, items, discovery_type="popular")
 
             logger.info(
-                f"[Type I] {current_date.to_date_string()} | "
+                f"[Backfill Popular] {current_date.to_date_string()} | "
                 f"searches: {searches_used}/{TYPE1_MAX_SEARCHES}"
             )
 
@@ -155,13 +134,28 @@ def _run_backfill_type1():
             current_date = current_date.add(days=1)
 
         logger.info(
-            f"Type I paused after {searches_used} searches. "
+            f"Type I backfill paused after {searches_used} searches. "
             f"Last day: {get_pipeline_info('type1_last_day')}. "
         )
 
 
+def _run_daily_popular():
+    now = pendulum.now()
+    published_after = now.subtract(hours=27).to_rfc3339_string()
+    published_before = now.to_rfc3339_string()
+
+    with get_db() as con:
+        items = search_videos(
+            query=BACKFILL_TOPIC,
+            published_after=published_after,
+            published_before=published_before,
+            order="viewCount",
+        )
+        n = _ingest_search_results(con, items, discovery_type="popular")
+        logger.info(f"[Daily Popular] {len(items)} raw -> ingested")
+
+
 def _random_timestamp_in_month(year: int, month: int) -> pendulum.DateTime:
-    """Return a random timestamp uniformly distributed within the given month."""
     start = pendulum.datetime(year, month, 1, 0, 0, 0)
     if month == 12:
         end = pendulum.datetime(year + 1, 1, 1, 0, 0, 0)
@@ -174,15 +168,6 @@ def _random_timestamp_in_month(year: int, month: int) -> pendulum.DateTime:
 
 
 def _run_backfill_type2():
-    """Type II: Random timestamp sampling per month, order=date.
-
-    For each completed month (before current month): 10 random searches.
-    For the current month: (day_of_month // 3) random searches.
-    Max 20 searches per run. Progress tracked in pipeline_info:
-      - type2_current_month:  'YYYY-MM' of the month currently being processed
-      - type2_searches_done:  how many searches done for the current month so far
-      - type2_completed:      'true' when all complete months are done
-    """
     if get_pipeline_info("type2_completed", "false") == "true":
         logger.info("Type II backfill already completed — skipping")
         return
@@ -250,7 +235,7 @@ def _run_backfill_type2():
                 _ingest_search_results(con, items, discovery_type="random")
 
                 logger.info(
-                    f"[Type II] {cursor.format('YYYY-MM')} search #{searches_done_in_month}/{target_count} | "
+                    f"[Backfill Random] {cursor.format('YYYY-MM')} search #{searches_done_in_month}/{target_count} | "
                     f"before={rand_ts.format('YYYY-MM-DD HH:mm')} | "
                     f"total: {total_searches}/{TYPE2_MAX_SEARCHES}"
                 )
@@ -260,7 +245,7 @@ def _run_backfill_type2():
 
             if total_searches >= TYPE2_MAX_SEARCHES:
                 logger.info(
-                    f"Type II paused after {total_searches} searches at {cursor.format('YYYY-MM')}. "
+                    f"Type II backfill paused after {total_searches} searches at {cursor.format('YYYY-MM')}. "
                 )
                 return
 
@@ -278,150 +263,32 @@ def _run_backfill_type2():
                 return
 
 
-def backfill():
-    """Run both Type I and Type II backfill in sequence"""
-    type1_done = get_pipeline_info("type1_completed", "false") == "true"
-    type2_done = get_pipeline_info("type2_completed", "false") == "true"
-
-    if type1_done and type2_done:
-        logger.info("Both backfill types already completed — skipping")
-        return
-
-    run_id = start_pipeline_run("backfill")
-    try:
-        if not type1_done:
-            _run_backfill_type1()
-
-        if not type2_done:
-            _run_backfill_type2()
-
-        today = pendulum.now().to_date_string()
-        with get_db() as con:
-            build_fact_agent_daily(con, snapshot_date=today)
-
-        finish_pipeline_run(run_id)
-    except Exception as e:
-        finish_pipeline_run(run_id, error=str(e))
-        raise
-
-
-def backfill_popular():
-    """Run only Type I backfill (popular / viewCount)"""
-    if get_pipeline_info("type1_completed", "false") == "true":
-        logger.info("Type I backfill already completed — skipping")
-        return
-
-    run_id = start_pipeline_run("backfill-popular")
-    try:
-        _run_backfill_type1()
-        today = pendulum.now().to_date_string()
-        with get_db() as con:
-            build_fact_agent_daily(con, snapshot_date=today)
-        finish_pipeline_run(run_id)
-    except Exception as e:
-        finish_pipeline_run(run_id, error=str(e))
-        raise
-
-
-def backfill_random():
-    """Run only Type II backfill (random / date)"""
-    if get_pipeline_info("type2_completed", "false") == "true":
-        logger.info("Type II backfill already completed — skipping")
-        return
-
-    run_id = start_pipeline_run("backfill-random")
-    try:
-        _run_backfill_type2()
-        today = pendulum.now().to_date_string()
-        with get_db() as con:
-            build_fact_agent_daily(con, snapshot_date=today)
-        finish_pipeline_run(run_id)
-    except Exception as e:
-        finish_pipeline_run(run_id, error=str(e))
-        raise
-
-
-def daily():
-    """Daily pipeline: scrape agents -> discover -> match -> aggregate.
-
-    Discovery strategy depends on which backfill types are complete:
-      - Type I complete:  fetch once with order='viewCount',
-                          publishedBefore=now(), publishedAfter=now()-1d3h
-      - Type II complete: fetch once with order='date',
-                          publishedBefore=now(), publishedAfter=random timestamp
-                          (random between now() and max(published_at) from existing videos)
-    """
-    if did_pipeline_run_today("daily"):
-        logger.info("Daily pipeline already ran today — skipping")
-        return
-
-    run_id = start_pipeline_run("daily")
-    try:
-        scrape_and_load()
-        scrape_banners()
-
-        _run_daily_discover()
-
-        enrich()
-
-        today = pendulum.now().to_date_string()
-        with get_db() as con:
-            build_fact_agent_daily(con, snapshot_date=today)
-
-        finish_pipeline_run(run_id)
-    except Exception as e:
-        finish_pipeline_run(run_id, error=str(e))
-        raise
-
-    logger.info("Daily pipeline complete")
-
-
-def _run_daily_discover():
-    """Discover new videos based on which backfill types are complete."""
-    type1_done = get_pipeline_info("type1_completed", "false") == "true"
-    type2_done = get_pipeline_info("type2_completed", "false") == "true"
-
+def _run_daily_random():
     now = pendulum.now()
 
+    if now.day % 3 != 0:
+        logger.info(f"[Daily Random] skipped — day={now.day} (runs when day%3==0)")
+        return
+
+    published_before = now.to_rfc3339_string()
+    lower_bound = now.subtract(days=3, hours=3)
+    delta_seconds = int((now - lower_bound).total_seconds())
+    random_offset = random.randint(0, max(delta_seconds - 1, 0))
+    random_ts = lower_bound.add(seconds=random_offset)
+    published_after = random_ts.to_rfc3339_string()
+
     with get_db() as con:
-        if type1_done:
-            published_after = now.subtract(hours=27).to_rfc3339_string()
-            published_before = now.to_rfc3339_string()
-
-            items = search_videos(
-                query=BACKFILL_TOPIC,
-                published_after=published_after,
-                published_before=published_before,
-                order="viewCount",
-            )
-            _ingest_search_results(con, items, discovery_type="popular")
-        else:
-            logger.info("[Daily Type I] skipped — Type I backfill not complete")
-
-        time.sleep(SEARCH_DELAY_SECONDS)
-
-        if type2_done:
-            if now.day % 3 == 0:
-                published_before = now.to_rfc3339_string()
-                lower_bound = now.subtract(days=3, hours=3)
-                delta_seconds = int((now - lower_bound).total_seconds())
-                random_offset = random.randint(0, max(delta_seconds - 1, 0))
-                random_ts = lower_bound.add(seconds=random_offset)
-                published_after = random_ts.to_rfc3339_string()
-
-                items = search_videos(
-                    query=BACKFILL_TOPIC,
-                    published_after=published_after,
-                    published_before=published_before,
-                    order="date",
-                )
-                _ingest_search_results(con, items, discovery_type="random")
-            else:
-                logger.info(
-                    f"[Daily Type II] skipped — day={now.day} (runs when day%3==0)"
-                )
-        else:
-            logger.info("[Daily Type II] skipped — Type II backfill not complete")
+        items = search_videos(
+            query=BACKFILL_TOPIC,
+            published_after=published_after,
+            published_before=published_before,
+            order="date",
+        )
+        _ingest_search_results(con, items, discovery_type="random")
+        logger.info(
+            f"[Daily Random] {len(items)} raw -> ingested | "
+            f"after={random_ts.format('YYYY-MM-DD HH:mm')}"
+        )
 
 
 def enrich():
@@ -450,26 +317,87 @@ def enrich():
             logger.info(f"Enriched {len(channel_ids)} channels")
 
 
+def daily():
+    if did_pipeline_run_today("daily"):
+        logger.info("Daily pipeline already ran today — skipping")
+        return
+
+    run_id = start_pipeline_run("daily")
+    try:
+        type1_done = get_pipeline_info("type1_completed", "false") == "true"
+        if type1_done:
+            logger.info("[Step 1] Popular backfill complete -> running daily popular")
+            _run_daily_popular()
+        else:
+            logger.info("[Step 1] Popular backfill in progress -> continuing backfill")
+            _run_backfill_type1()
+
+        time.sleep(SEARCH_DELAY_SECONDS)
+
+        type2_done = get_pipeline_info("type2_completed", "false") == "true"
+        if type2_done:
+            logger.info("[Step 2] Random backfill complete -> running daily random")
+            _run_daily_random()
+        else:
+            logger.info("[Step 2] Random backfill in progress -> continuing backfill")
+            _run_backfill_type2()
+
+        logger.info("[Step 3] Scrape agents")
+        scrape_and_load()
+
+        logger.info("[Step 4] Scrape banners")
+        scrape_banners()
+
+        logger.info("[Step 5] Enrich")
+        enrich()
+
+        logger.info("[Step 6] Match remaining")
+        match_remaining()
+
+        logger.info("[Step 7] Build agent daily for today")
+        today = pendulum.now().to_date_string()
+        with get_db() as con:
+            build_fact_agent_daily(con, snapshot_date=today)
+
+        logger.info("[Step 8] Backup")
+        backup()
+
+        finish_pipeline_run(run_id)
+    except Exception as e:
+        finish_pipeline_run(run_id, error=str(e))
+        raise
+
+    logger.info("Daily pipeline complete")
+
+
+def build_agent_daily_cmd():
+    with get_db() as con:
+        build_fact_agent_daily(con)
+
+
 def status():
-    """Show current pipeline status."""
     type1_done = get_pipeline_info("type1_completed", "false") == "true"
     type2_done = get_pipeline_info("type2_completed", "false") == "true"
     type1_last_day = get_pipeline_info("type1_last_day")
     type2_current_month = get_pipeline_info("type2_current_month")
 
-    n_videos = n_channels = n_agents = 0
+    n_videos = n_channels = n_agents = n_unmatched = 0
     with get_db() as con:
         try:
             n_videos = con.execute("SELECT COUNT(*) FROM dim_video").fetchone()[0]
             n_channels = con.execute("SELECT COUNT(*) FROM dim_channel").fetchone()[0]
             n_agents = con.execute("SELECT COUNT(*) FROM dim_agent").fetchone()[0]
+            n_unmatched = con.execute(
+                "SELECT COUNT(*) FROM dim_video WHERE is_matched = FALSE OR is_matched IS NULL"
+            ).fetchone()[0]
         except Exception:
-            n_videos = n_channels = n_agents = 0
+            pass
 
     print("\n" + "=" * 60)
     print("  PIPELINE STATUS")
     print("=" * 60)
     print(f"  Videos:             {n_videos}")
+    print(f"  Unmatched videos:   {n_unmatched}")
     print(f"  Channels:           {n_channels}")
     print(f"  Agents:             {n_agents}")
     print(f"  Type I (popular):   {'DONE' if type1_done else 'IN PROGRESS'}")
@@ -485,7 +413,6 @@ def status():
 
 
 def query(sql: str):
-    """Run an ad-hoc SQL query and display results."""
     with get_db() as con:
         con.sql(sql).show()
 
@@ -494,7 +421,8 @@ def backup():
     import duckdb
 
     if not MOTHERDUCK_TOKEN:
-        raise RuntimeError("MOTHERDUCK_TOKEN environment variable is not set")
+        logger.warning("MOTHERDUCK_TOKEN not set — skipping backup")
+        return
 
     ts = pendulum.now("UTC").format("YYYY-MM-DDTHH-mm-ss[Z]")
     out_dir = Path("artifacts/warehouse")
@@ -522,18 +450,9 @@ def backup():
     shutil.copy2(versioned, latest)
 
 
-def build_agent_daily_cmd():
-    """Rebuild fact_agent_daily from bridge + fact_video_daily."""
-    with get_db() as con:
-        build_fact_agent_daily(con)
-
-
 COMMANDS = {
     "setup": setup,
     "daily": daily,
-    "backfill": backfill,
-    "backfill-popular": backfill_popular,
-    "backfill-random": backfill_random,
     "init-tables": init_tables,
     "scrape-agents": run_tracked("scrape-agents")(scrape_and_load),
     "scrape-banners": run_tracked("scrape-banners")(scrape_banners),
