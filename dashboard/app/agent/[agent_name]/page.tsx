@@ -18,6 +18,7 @@ import { MostLikedTable } from '@/components/agent-detail/most-liked-table';
 import { TopChannelsTable } from '@/components/agent-detail/top-channels-table';
 import { CoOccurringAgents } from '@/components/agent-detail/co-occurring-agents';
 import { ATTR_COLORS, fmt } from '@/lib/utils';
+export const dynamic = 'force-dynamic';
 export const revalidate = 3600;
 interface PageProps {
   params: Promise<{ agent_name: string }>;
@@ -141,7 +142,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
         </Suspense>
       </main>
       <footer className="footer footer-center p-4 bg-base-100 text-base-content/60 mt-8">
-        <p className="text-sm">ZZZ YouTube Analytics — Data powered by DuckDB</p>
+        <p className="text-sm">ZZZ YouTube Analytics — Data powered by PostgreSQL</p>
       </footer>
     </div>
   );

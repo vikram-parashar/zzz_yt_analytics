@@ -23,12 +23,12 @@ export const AGENT_STATS_QUERY = `
 `;
 export const DIM_PATCH_QUERY = `
   SELECT DISTINCT version, agent_name AS banner_agent,
-    banner_start::VARCHAR AS banner_start, banner_end::VARCHAR AS banner_end
+    CAST(banner_start AS VARCHAR) AS banner_start, CAST(banner_end AS VARCHAR) AS banner_end
   FROM dim_patch
   ORDER BY banner_start
 `;
 export const FACT_MIN_DATE_QUERY = `
-  SELECT MIN(snapshot_date)::VARCHAR AS mn FROM fact_agent_daily
+  SELECT CAST(MIN(snapshot_date) AS VARCHAR) AS mn FROM fact_agent_daily
 `;
 export function agentLookupQuery(agentName: string): string {
   const safe = agentName.replace(/'/g, "''");
@@ -40,7 +40,7 @@ export function agentLookupQuery(agentName: string): string {
       fad.attributed_likes AS total_likes,
       fad.attributed_comments AS total_comments,
       (p.agent_name IS NOT NULL) AS on_banner
-  FROM (select * from dim_agent where name='${safe}') a
+  FROM (SELECT * FROM dim_agent WHERE name='${safe}') a
   LEFT JOIN (
       SELECT DISTINCT ON (agent_name)
           *
@@ -74,12 +74,12 @@ export function topAgentsTimelineQuery(startDate: string, endDate: string): stri
     )
     SELECT
       b.agent_name,
-      strftime(v.published_at, '%Y-%m') AS month,
+      TO_CHAR(v.published_at, 'YYYY-MM') AS month,
       COUNT(*) AS video_count
     FROM (SELECT * FROM bridge_video_agent WHERE attribution_weight >= 0.2 AND agent_name IN (SELECT agent_name FROM _top_agents)) AS b
     JOIN dim_video v ON v.video_id = b.video_id
     WHERE v.published_at >= '${sd}' AND v.published_at <= '${ed}'
-    GROUP BY b.agent_name, strftime(v.published_at, '%Y-%m')
+    GROUP BY b.agent_name, TO_CHAR(v.published_at, 'YYYY-MM')
     ORDER BY b.agent_name, month
   `;
 }
@@ -89,21 +89,21 @@ export function bannerAgentGainQuery(selectedVersion: string): string {
     WITH patch AS (
       SELECT
         version,
-        banner_start::DATE AS banner_start,
-        banner_end::DATE AS banner_end
+        CAST(banner_start AS DATE) AS banner_start,
+        CAST(banner_end AS DATE) AS banner_end
       FROM dim_patch
       WHERE version = '${safe}'
     ),
     start_date AS (
       SELECT
-        MIN(fad.snapshot_date)::DATE AS start_snap
+        CAST(MIN(fad.snapshot_date) AS DATE) AS start_snap
       FROM fact_agent_daily fad
       CROSS JOIN patch p
       WHERE fad.snapshot_date >= p.banner_start - INTERVAL '7 day'
     ),
     end_date AS (
       SELECT
-        MAX(fad.snapshot_date)::DATE AS end_snap
+        CAST(MAX(fad.snapshot_date) AS DATE) AS end_snap
       FROM fact_agent_daily fad
       CROSS JOIN patch p
       WHERE fad.snapshot_date <= LEAST(CURRENT_DATE, p.banner_end)
@@ -114,7 +114,7 @@ export function bannerAgentGainQuery(selectedVersion: string): string {
         fad.attributed_views AS start_views
       FROM fact_agent_daily fad
       CROSS JOIN start_date sd
-      WHERE fad.snapshot_date::DATE = sd.start_snap
+      WHERE CAST(fad.snapshot_date AS DATE) = sd.start_snap
     ),
     end_snap AS (
       SELECT
@@ -122,7 +122,7 @@ export function bannerAgentGainQuery(selectedVersion: string): string {
         fad.attributed_views AS end_views
       FROM fact_agent_daily fad
       CROSS JOIN end_date ed
-      WHERE fad.snapshot_date::DATE = ed.end_snap
+      WHERE CAST(fad.snapshot_date AS DATE) = ed.end_snap
     ),
     ranked AS (
       SELECT
@@ -148,14 +148,26 @@ export function risingCreatorsQuery(_timeRange: 'week' | 'month' | 'year'): stri
     WITH channel_growth AS (
       SELECT
         channel_id,
-        arg_min(subscriber_count, snapshot_date) AS start_subs,
-        arg_max(subscriber_count, snapshot_date) AS end_subs,
-        arg_min(view_count, snapshot_date) AS start_views,
-        arg_max(view_count, snapshot_date) AS end_views,
-        arg_min(video_count, snapshot_date) AS start_videos,
-        arg_max(video_count, snapshot_date) AS end_videos
-      FROM fact_channel_daily
-      WHERE snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
+        (SELECT subscriber_count FROM fact_channel_daily f2
+         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
+         ORDER BY f2.snapshot_date ASC LIMIT 1) AS start_subs,
+        (SELECT subscriber_count FROM fact_channel_daily f2
+         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
+         ORDER BY f2.snapshot_date DESC LIMIT 1) AS end_subs,
+        (SELECT view_count FROM fact_channel_daily f2
+         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
+         ORDER BY f2.snapshot_date ASC LIMIT 1) AS start_views,
+        (SELECT view_count FROM fact_channel_daily f2
+         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
+         ORDER BY f2.snapshot_date DESC LIMIT 1) AS end_views,
+        (SELECT video_count FROM fact_channel_daily f2
+         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
+         ORDER BY f2.snapshot_date ASC LIMIT 1) AS start_videos,
+        (SELECT video_count FROM fact_channel_daily f2
+         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
+         ORDER BY f2.snapshot_date DESC LIMIT 1) AS end_videos
+      FROM fact_channel_daily f
+      WHERE f.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
       GROUP BY channel_id
     ),
     video_counts AS (
@@ -190,7 +202,7 @@ export function agentVideoTimelineQuery(agentName: string, startDate: string, en
   const ed = endDate.replace(/'/g, "''");
   return `
     SELECT
-        strftime(dv.published_at, '%Y-%m') AS month,
+        TO_CHAR(dv.published_at, 'YYYY-MM') AS month,
         COUNT(*) AS video_cnt
     FROM bridge_video_agent bva
     JOIN dim_video dv
@@ -203,13 +215,13 @@ export function agentVideoTimelineQuery(agentName: string, startDate: string, en
 }
 export function agentBannersQuery(agentName: string): string {
   const safe = agentName.replace(/'/g, "''");
-  return `SELECT version, banner_start::VARCHAR AS banner_start, banner_end::VARCHAR AS banner_end FROM dim_patch WHERE agent_name = '${safe}' ORDER BY banner_start`;
+  return `SELECT version, CAST(banner_start AS VARCHAR) AS banner_start, CAST(banner_end AS VARCHAR) AS banner_end FROM dim_patch WHERE agent_name = '${safe}' ORDER BY banner_start`;
 }
 export function agentEngagementTrendQuery(agentName: string): string {
   const safe = agentName.replace(/'/g, "''");
   return `
     SELECT
-      snapshot_date::VARCHAR AS date,
+      CAST(snapshot_date AS VARCHAR) AS date,
       attributed_views AS views,
       attributed_likes AS likes
     FROM fact_agent_daily
@@ -229,7 +241,7 @@ export function agentMostLikedVideoQuery(agentName: string): string {
         dv.latest_like_count AS like_count,
         bva.attribution_weight*(
             1000 * (
-                SELECT SUM(latest_like_count)::DOUBLE
+                SELECT CAST(SUM(latest_like_count) AS DOUBLE PRECISION)
                        / NULLIF(SUM(latest_view_count), 0)
                 FROM dim_video
             )

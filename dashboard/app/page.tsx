@@ -5,6 +5,7 @@ import { BannerGainSection } from '@/components/banner-gain-section';
 import { RisingCreatorsTable } from '@/components/rising-creators-table';
 import { AgentGrid } from '@/components/agent-grid';
 import { ChartLoading } from '@/components/chart-loading';
+export const dynamic = 'force-dynamic';
 export const revalidate = 3600;
 export default async function Home() {
   const [agentStatsRes, patchRes, factMinDateRes] = await Promise.all([
@@ -41,7 +42,7 @@ export default async function Home() {
         </Suspense>
       </main>
       <footer className="footer footer-center p-4 bg-base-100 text-base-content/60 mt-8">
-        <p className="text-sm">ZZZ YouTube Analytics — Data powered by DuckDB</p>
+        <p className="text-sm">ZZZ YouTube Analytics — Data powered by PostgreSQL</p>
       </footer>
     </div>
   );
