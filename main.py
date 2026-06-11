@@ -32,6 +32,7 @@ from src.warehouse import (
     init_tables,
     insert_discovered_videos,
     _video_search_to_df,
+    set_pipeline_info,
     start_pipeline_run,
     finish_pipeline_run,
     upsert_channel_details,
@@ -141,7 +142,7 @@ def _run_backfill_type1():
 
 def _run_daily_popular():
     now = pendulum.now()
-    published_after = now.subtract(hours=27).to_rfc3339_string()
+    published_after = now.subtract(hours=48).to_rfc3339_string()
     published_before = now.to_rfc3339_string()
 
     with get_db() as con:
@@ -151,7 +152,7 @@ def _run_daily_popular():
             published_before=published_before,
             order="viewCount",
         )
-        n = _ingest_search_results(con, items, discovery_type="popular")
+        _ingest_search_results(con, items, discovery_type="popular")
         logger.info(f"[Daily Popular] {len(items)} raw -> ingested")
 
 
@@ -270,24 +271,41 @@ def _run_daily_random():
         logger.info(f"[Daily Random] skipped — day={now.day} (runs when day%3==0)")
         return
 
-    published_before = now.to_rfc3339_string()
-    lower_bound = now.subtract(days=3, hours=3)
-    delta_seconds = int((now - lower_bound).total_seconds())
-    random_offset = random.randint(0, max(delta_seconds - 1, 0))
-    random_ts = lower_bound.add(seconds=random_offset)
-    published_after = random_ts.to_rfc3339_string()
+    published_after = "2024-01-01T00:00:00Z"
 
     with get_db() as con:
+        last_discovered = con.sql("""
+            SELECT MAX(ingested_date)
+            FROM dim_video
+            WHERE discovery_type = 'random'
+        """).fetchone()[0]
+
+        if last_discovered is not None:
+            last_discovered = pendulum.instance(last_discovered)
+        else:
+            last_discovered = now.subtract(days=7)
+
+        start_ts = last_discovered.int_timestamp
+        end_ts = now.int_timestamp
+
+        random_ts = pendulum.from_timestamp(
+            random.randint(start_ts, end_ts), tz=now.timezone
+        )
+
+        published_before = random_ts.to_iso8601_string()
+
         items = search_videos(
             query=BACKFILL_TOPIC,
             published_after=published_after,
             published_before=published_before,
             order="date",
         )
+
         _ingest_search_results(con, items, discovery_type="random")
+
         logger.info(
             f"[Daily Random] {len(items)} raw -> ingested | "
-            f"after={random_ts.format('YYYY-MM-DD HH:mm')}"
+            f"before={random_ts.format('YYYY-MM-DD HH:mm')}"
         )
 
 
