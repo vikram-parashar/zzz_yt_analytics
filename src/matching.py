@@ -53,8 +53,8 @@ def _word_match(text: str, term: str) -> int:
 def _compute_confidence(video_row, aliases) -> dict[str, int]:
     results = defaultdict(int)
 
-    title = normalize(str(video_row.title))
-    description = normalize(str(video_row.description))
+    title = normalize(str(getattr(video_row, "title", "")))
+    description = normalize(str(getattr(video_row, "description", "")))
 
     tags_raw = getattr(video_row, "tags", None)
     tags = tags_raw if isinstance(tags_raw, list) else []
@@ -109,9 +109,12 @@ def match_videos(con, videos_df: pd.DataFrame | None = None):
         scores = _compute_confidence(video, aliases)
 
         for agent, confidence in scores.items():
+            video_id = getattr(video, "video_id", None)
+            if video_id is None:
+                continue
             results.append(
                 {
-                    "video_id": video.video_id,
+                    "video_id": video_id,
                     "agent_name": agent,
                     "confidence": confidence,
                 }

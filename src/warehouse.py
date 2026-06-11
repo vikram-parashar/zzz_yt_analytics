@@ -1,5 +1,4 @@
 import re
-import duckdb
 import pandas as pd
 import pendulum
 
@@ -129,7 +128,7 @@ TABLE_DDL = {
 
 def init_tables():
     with get_db() as con:
-        for name, ddl in TABLE_DDL.items():
+        for _, ddl in TABLE_DDL.items():
             con.execute(ddl)
 
 
@@ -329,8 +328,6 @@ def upsert_video_details(con, df: pd.DataFrame):
 
     con.register("tmp_video_stats", df)
 
-    updated_ids = df["video_id"].tolist()
-
     con.execute("""
         UPDATE dim_video AS v
         SET duration_seconds = t.duration_seconds,
@@ -362,7 +359,7 @@ def upsert_video_details(con, df: pd.DataFrame):
 
     from src.matching import match_videos
 
-    match_videos(con, video_ids=updated_ids)
+    match_videos(con, videos_df=df)
 
 
 def upsert_channel_details(con, df: pd.DataFrame):
@@ -464,7 +461,6 @@ def update_attribution_weights(con):
         WHERE b.video_id = totals.video_id
           AND totals.total_conf > 0
     """)
-
 
 
 def build_fact_agent_daily(con, snapshot_date: str | None = None):

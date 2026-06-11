@@ -294,10 +294,6 @@ def backfill():
         if not type2_done:
             _run_backfill_type2()
 
-        today = pendulum.now().to_date_string()
-        with get_db() as con:
-            build_fact_agent_daily(con, snapshot_date=today)
-
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -313,9 +309,6 @@ def backfill_popular():
     run_id = start_pipeline_run("backfill-popular")
     try:
         _run_backfill_type1()
-        today = pendulum.now().to_date_string()
-        with get_db() as con:
-            build_fact_agent_daily(con, snapshot_date=today)
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -331,9 +324,6 @@ def backfill_random():
     run_id = start_pipeline_run("backfill-random")
     try:
         _run_backfill_type2()
-        today = pendulum.now().to_date_string()
-        with get_db() as con:
-            build_fact_agent_daily(con, snapshot_date=today)
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -523,8 +513,9 @@ def backup():
 
 def build_agent_daily_cmd():
     """Rebuild fact_agent_daily from bridge + fact_video_daily."""
+    today = pendulum.now().to_date_string()
     with get_db() as con:
-        build_fact_agent_daily(con)
+        build_fact_agent_daily(con, snapshot_date=today)
 
 
 COMMANDS = {
