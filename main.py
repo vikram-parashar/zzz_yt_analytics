@@ -9,7 +9,8 @@ Usage:
     uv run main.py scrape-agents      Scrape agent data from wiki
     uv run main.py scrape-banners     Scrape banner schedule from game8.co
     uv run main.py enrich             Enrich video and channel metadata
-    uv run main.py match              Build video-agent associations
+    uv run main.py match-remaining   Match unmatched videos against agents
+    uv run main.py match-all          Re-match ALL videos against agents
     uv run main.py build-agent-daily  Rebuild fact_agent_daily aggregates
     uv run main.py query <sql>        Run SQL queries in the warehouse
     uv run main.py backup             create a backup copy from motherduck
@@ -48,7 +49,7 @@ from src.warehouse import (
     build_fact_agent_daily,
 )
 from src.agents import scrape_and_load
-from src.matching import match_all_videos
+from src.matching import match_remaining, match_all
 from src.banners import scrape_banners
 
 logger = get_logger("main")
@@ -294,6 +295,10 @@ def backfill():
         if not type2_done:
             _run_backfill_type2()
 
+        today = pendulum.now().to_date_string()
+        with get_db() as con:
+            build_fact_agent_daily(con, snapshot_date=today)
+
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -309,6 +314,9 @@ def backfill_popular():
     run_id = start_pipeline_run("backfill-popular")
     try:
         _run_backfill_type1()
+        today = pendulum.now().to_date_string()
+        with get_db() as con:
+            build_fact_agent_daily(con, snapshot_date=today)
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -324,6 +332,9 @@ def backfill_random():
     run_id = start_pipeline_run("backfill-random")
     try:
         _run_backfill_type2()
+        today = pendulum.now().to_date_string()
+        with get_db() as con:
+            build_fact_agent_daily(con, snapshot_date=today)
         finish_pipeline_run(run_id)
     except Exception as e:
         finish_pipeline_run(run_id, error=str(e))
@@ -513,9 +524,8 @@ def backup():
 
 def build_agent_daily_cmd():
     """Rebuild fact_agent_daily from bridge + fact_video_daily."""
-    today = pendulum.now().to_date_string()
     with get_db() as con:
-        build_fact_agent_daily(con, snapshot_date=today)
+        build_fact_agent_daily(con)
 
 
 COMMANDS = {
@@ -528,7 +538,8 @@ COMMANDS = {
     "scrape-agents": run_tracked("scrape-agents")(scrape_and_load),
     "scrape-banners": run_tracked("scrape-banners")(scrape_banners),
     "enrich": run_tracked("enrich")(enrich),
-    "match": run_tracked("match")(match_all_videos),
+    "match-remaining": run_tracked("match-remaining")(match_remaining),
+    "match-all": run_tracked("match-all")(match_all),
     "build-agent-daily": run_tracked("build-agent-daily")(build_agent_daily_cmd),
     "status": status,
     "backup": backup,

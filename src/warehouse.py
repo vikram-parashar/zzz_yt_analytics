@@ -39,6 +39,7 @@ TABLE_DDL = {
             latest_view_count BIGINT,
             latest_like_count BIGINT,
             latest_comment_count BIGINT,
+            is_matched BOOLEAN DEFAULT FALSE,
             discovery_type VARCHAR DEFAULT 'popular'
         )
     """,
@@ -317,10 +318,6 @@ def insert_discovered_videos(con, df: pd.DataFrame, discovery_type: str = "popul
         [today],
     )
 
-    from src.matching import match_videos
-
-    match_videos(con, videos_df=df)
-
 
 def upsert_video_details(con, df: pd.DataFrame):
     if df.empty:
@@ -356,10 +353,6 @@ def upsert_video_details(con, df: pd.DataFrame):
         FROM tmp_video_stats AS t
         WHERE dv.video_id = t.video_id
     """)
-
-    from src.matching import match_videos
-
-    match_videos(con, videos_df=df)
 
 
 def upsert_channel_details(con, df: pd.DataFrame):
@@ -438,6 +431,7 @@ def get_enrichment_ids(con) -> tuple[list[str], list[str]]:
     channel_ids = df["channel_id"].dropna().astype(str).unique().tolist()
 
     return video_ids, channel_ids
+
 
 def get_agent_names(con) -> list[str]:
     try:

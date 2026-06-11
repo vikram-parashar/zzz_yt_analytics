@@ -1,9 +1,4 @@
-from collections import defaultdict
-import re
-
-import pandas as pd
-
-from src.utils import get_logger, get_db
+from src.utils import get_db, get_logger
 from src.warehouse import update_attribution_weights
 
 logger = get_logger(__name__)
@@ -14,140 +9,108 @@ MATCH_WEIGHTS = {
     "description": 2,
 }
 
-_STRIP_RE = re.compile(r"[_/\-|]")
-_OWNERSHIP_RE = re.compile(r"'s\b", re.IGNORECASE)
-_MULTISPACE_RE = re.compile(r"\s+")
 
+def _do_match(con, incremental: bool):
+    video_filter = (
+        " WHERE v.is_matched = FALSE OR v.is_matched IS NULL " if incremental else ""
+    )
 
-def normalize(text: str) -> str:
-    if not text:
-        return ""
-
-    text = _STRIP_RE.sub(" ", text)
-    text = _OWNERSHIP_RE.sub("", text)
-    text = _MULTISPACE_RE.sub(" ", text).strip()
-
-    return text.lower()
-
-
-def _word_match(text: str, term: str) -> int:
-    term = term.lower().strip()
-    if not term:
-        return 0
-
-    text = text.lower()
-    cnt = 0
-
-    cnt += len(re.findall(rf"\b{re.escape(term)}\b", text))
-
-    if " " in term:
-        no_space_term = term.replace(" ", "")
-        if no_space_term:
-            cnt += len(
-                re.findall(rf"\b{re.escape(no_space_term)}\b", text.replace(" ", ""))
-            )
-
-    return cnt
-
-
-def _compute_confidence(video_row, aliases) -> dict[str, int]:
-    results = defaultdict(int)
-
-    title = normalize(str(getattr(video_row, "title", "")))
-    description = normalize(str(getattr(video_row, "description", "")))
-
-    tags_raw = getattr(video_row, "tags", None)
-    tags = tags_raw if isinstance(tags_raw, list) else []
-    tags_text = normalize(" ".join(tags))
-
-    for agent, alias in aliases:
-        score = 0
-
-        score += MATCH_WEIGHTS["title"] * _word_match(title, alias)
-        score += MATCH_WEIGHTS["description"] * _word_match(description, alias)
-        score += MATCH_WEIGHTS["tags"] * _word_match(tags_text, alias)
-
-        if score == 0:
-            continue
-
-        results[agent] += score
-    return results
-
-
-def match_videos(con, videos_df: pd.DataFrame | None = None):
-    aliases_df = con.sql("""
-        SELECT name, alias
+    sql = f"""
+    INSERT INTO bridge_video_agent (
+        video_id,
+        agent_name,
+        confidence
+    )
+    WITH aliases AS (
+        SELECT
+            name,
+            alias,
+            '\\b' || regexp_escape(alias) || '\\b' AS pattern
         FROM bridge_agent_alias
-    """).df()
+    ),
 
-    if aliases_df.empty:
-        logger.warning("No aliases found — skipping matching")
-        return
-    aliases = list(aliases_df[["name", "alias"]].itertuples(index=False, name=None))
+    scored AS (
+        SELECT
+            v.video_id,
+            a.name AS agent_name,
 
-    if videos_df is None:
-        videos_df = con.sql("""
-            SELECT
-                video_id,
-                title,
-                description,
-                tags
-            FROM dim_video
-        """).df()
+            (
+                CASE WHEN regexp_matches(v.title, a.pattern) THEN 10 ELSE 0 END
+                +
+                CASE WHEN regexp_matches(v.description, a.pattern) THEN 2 ELSE 0 END
+                +
+                CASE WHEN regexp_matches(array_to_string(v.tags, ' '), a.pattern) THEN 5 ELSE 0 END
+            ) AS confidence
 
-    if videos_df is None:
-        logger.warning("cannot fetch dim_video")
-        return
+        FROM dim_video v
+        CROSS JOIN aliases a
+        {video_filter}
+    )
 
-    if videos_df.empty:
-        logger.info("No videos to match")
-        return
+    SELECT
+        video_id,
+        agent_name,
+        confidence
+    FROM scored
+    WHERE confidence > 0
 
-    results = []
+    ON CONFLICT (video_id, agent_name)
+    DO UPDATE SET
+        confidence = excluded.confidence
+    """
 
-    for video in videos_df.itertuples(index=False):
-        scores = _compute_confidence(video, aliases)
-
-        for agent, confidence in scores.items():
-            video_id = getattr(video, "video_id", None)
-            if video_id is None:
-                continue
-            results.append(
-                {
-                    "video_id": video_id,
-                    "agent_name": agent,
-                    "confidence": confidence,
-                }
-            )
-
-    if results:
-        results_df = pd.DataFrame(results)
-
-        con.register("match_tmp", results_df)
-
-        con.execute("""
-            INSERT INTO bridge_video_agent (
-                video_id,
-                agent_name,
-                confidence
-            )
-            SELECT
-                video_id,
-                agent_name,
-                confidence
-            FROM match_tmp
-            ON CONFLICT (video_id, agent_name)
-            DO UPDATE SET
-                confidence = excluded.confidence
-        """)
-
-        logger.info(f"Wrote {len(results)} video-agent associations")
-    else:
-        logger.info("No video-agent matches found")
+    con.execute(sql)
 
     update_attribution_weights(con)
 
 
-def match_all_videos():
+def match_remaining():
     with get_db() as con:
-        match_videos(con)
+        videos = con.sql("""
+            SELECT COUNT(*)
+            FROM dim_video
+            WHERE is_matched = FALSE
+               OR is_matched IS NULL
+        """).fetchone()[0]
+
+        if videos == 0:
+            logger.info("No unmatched videos found")
+            return
+
+        logger.info(f"Matching {videos} unmatched videos")
+
+        _do_match(con, incremental=True)
+
+        con.execute("""
+            UPDATE dim_video
+            SET is_matched = TRUE
+            WHERE is_matched = FALSE
+               OR is_matched IS NULL
+        """)
+
+        logger.info(f"match_remaining complete: {videos} videos processed ")
+
+
+def match_all():
+    with get_db() as con:
+        videos = con.sql("""
+            SELECT COUNT(*)
+            FROM dim_video
+        """).fetchone()[0]
+
+        if videos == 0:
+            logger.info("No videos found")
+            return
+
+        logger.info(f"Re-matching all {videos} videos")
+
+        con.execute("DELETE FROM bridge_video_agent")
+
+        _do_match(con, incremental=False)
+
+        con.execute("""
+            UPDATE dim_video
+            SET is_matched = TRUE
+        """)
+
+        logger.info(f"match_all complete: {videos} videos processed ")
