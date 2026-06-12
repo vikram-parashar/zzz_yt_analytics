@@ -8,7 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from src.utils import get_db, get_logger
-from src.warehouse import get_agent_names
+from src.warehouse import get_agent_names, normalize_text
 
 logger = get_logger(__name__)
 
@@ -165,7 +165,7 @@ def _parse_playable_tables(soup: BeautifulSoup) -> list[dict]:
                 spec_img = spec_cell.find("img")
                 speciality = None
                 if spec_img and spec_img.get("alt"):
-                    speciality = re.sub(r"^Icon_", "", spec_img["alt"])
+                    speciality = re.sub(r"^Icon_", spec_img["alt"])
                 if not speciality:
                     speciality = spec_cell.get_text(strip=True) or None
 
@@ -283,11 +283,16 @@ def upsert_aliases(con, alias_map: dict):
 
     aliases_list = []
     for agent_name in agent_names:
-        aliases = alias_map.get(agent_name) or []
-        if not aliases:
+        raw_aliases = alias_map.get(agent_name) or []
+        if not raw_aliases:
             logger.warning(f"{agent_name} does not have a alias")
-            aliases.append(agent_name)
-        aliases_list.extend([{"name": agent_name, "alias": alias} for alias in aliases])
+            raw_aliases.append(agent_name)
+        aliases_list.extend(
+            [
+                {"name": agent_name, "alias": normalize_text(alias)}
+                for alias in raw_aliases
+            ]
+        )
 
     logger.info("db.alias_upsert.mapped rows=%d", len(aliases_list))
 

@@ -6,6 +6,20 @@ from src.utils import get_logger, get_db
 
 logger = get_logger(__name__)
 
+_SEP_RE = re.compile(r"[_/\\\-|]")
+_POSS_RE = re.compile(r"'s\b", re.IGNORECASE)
+_MULTI_SPACE_RE = re.compile(r"\s{2,}")
+
+
+def normalize_text(text: str | None) -> str | None:
+    if not text:
+        return text
+    text = _SEP_RE.sub(" ", text)
+    text = _POSS_RE.sub(" ", text)
+    text = _MULTI_SPACE_RE.sub(" ", text)
+    return text.strip()
+
+
 TABLE_DDL = {
     "dim_agent": """
         CREATE TABLE IF NOT EXISTS dim_agent (
@@ -209,8 +223,8 @@ def _video_search_to_df(items: list[dict]) -> pd.DataFrame:
             records.append(
                 {
                     "video_id": item["id"]["videoId"],
-                    "title": snippet["title"],
-                    "description": snippet["description"],
+                    "title": normalize_text(snippet["title"]),
+                    "description": normalize_text(snippet["description"]),
                     "channel_id": snippet["channelId"],
                     "channel_title": snippet["channelTitle"],
                     "published_at": snippet["publishedAt"],
@@ -245,10 +259,11 @@ def _video_stats_to_df(items: list[dict]) -> pd.DataFrame:
         try:
             snippet = item.get("snippet", {})
             stats = item.get("statistics", {})
+            raw_tags = snippet.get("tags", [])
             records.append(
                 {
                     "video_id": item["id"],
-                    "tags": snippet.get("tags", []),
+                    "tags": [normalize_text(t) for t in raw_tags] if raw_tags else [],
                     "duration_seconds": _parse_duration(
                         item.get("contentDetails", {}).get("duration", "")
                     ),
