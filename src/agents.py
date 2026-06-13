@@ -15,7 +15,6 @@ logger = get_logger(__name__)
 WIKI_URL = "https://www.lootbar.com/blog/en/zenless-zone-zero-character-list.html"
 
 ALIASES_PATH = Path("data/aliases.json")
-FALLBACK_AGENTS_PATH = Path("data/agents_fallback.json")
 
 HTTP_MAX_RETRIES = 3
 HTTP_RETRY_DELAY = 5
@@ -165,7 +164,7 @@ def _parse_playable_tables(soup: BeautifulSoup) -> list[dict]:
                 spec_img = spec_cell.find("img")
                 speciality = None
                 if spec_img and spec_img.get("alt"):
-                    speciality = re.sub(r"^Icon_", spec_img["alt"])
+                    speciality = re.sub(r"^Icon_", "", spec_img["alt"])
                 if not speciality:
                     speciality = spec_cell.get_text(strip=True) or None
 

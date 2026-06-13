@@ -52,7 +52,7 @@ BACKFILL_TILL = "2024-01-01"
 TYPE1_MAX_SEARCHES = 60
 
 TYPE2_MAX_SEARCHES = 20
-TYPE2_SEARCHES_PER_MONTH = 10
+TYPE2_SEARCHES_PER_MONTH = 5
 
 SEARCH_DELAY_SECONDS = 2.0
 
@@ -332,7 +332,6 @@ def daily():
         with get_db() as con:
             build_fact_agent_daily(con, snapshot_date=today)
 
-        logger.info("[Step 10] Backup")
         backup()
 
         finish_pipeline_run(run_id)
