@@ -1,3 +1,4 @@
+from duckdb import DuckDBPyConnection
 from src.utils import get_db, get_logger
 from src.warehouse import update_attribution_weights
 
@@ -10,7 +11,18 @@ MATCH_WEIGHTS = {
 }
 
 
-def _do_match(con, incremental: bool):
+def post_correction(con: DuckDBPyConnection):
+    sql = """
+        DELETE FROM bridge_video_agent where agent_name='Billy' and video_id in ( select video_id from bridge_video_agent where agent_name='Starlight Billy')
+    """
+    con.execute(sql)
+    sql = """
+        DELETE FROM bridge_video_agent where agent_name='Anby' and video_id in ( select video_id from bridge_video_agent where agent_name='Soldier 0 Anby')
+    """
+    con.execute(sql)
+
+
+def _do_match(con: DuckDBPyConnection, incremental: bool):
     video_filter = (
         " WHERE v.is_matched = FALSE OR v.is_matched IS NULL " if incremental else ""
     )
@@ -60,6 +72,7 @@ def _do_match(con, incremental: bool):
     """
 
     con.execute(sql)
+    post_correction(con)
 
     update_attribution_weights(con)
 
