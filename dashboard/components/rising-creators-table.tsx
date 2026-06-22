@@ -51,7 +51,6 @@ export function RisingCreatorsTable() {
                       <th>#</th>
                       <th>Channel</th>
                       <th>Videos</th>
-                      <th>Score</th>
                       <th>Sub Growth %</th>
                       <th>View Growth %</th>
                       <th>Video Cnt Growth %</th>
@@ -76,7 +75,6 @@ export function RisingCreatorsTable() {
                           </div>
                         </td>
                         <td className="text-sm">{ch.videos_collected ?? '-'}</td>
-                        <td className="text-sm font-bold text-primary">{(ch.score ?? 0).toFixed(1)}</td>
                         <td className="text-sm">{(ch.sub_growth ?? 0).toFixed(1)}%</td>
                         <td className="text-sm">{(ch.view_growth ?? 0).toFixed(1)}%</td>
                         <td className="text-sm">{(ch.video_cnt_growth ?? 0).toFixed(1)}%</td>

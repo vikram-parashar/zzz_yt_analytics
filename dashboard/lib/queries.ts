@@ -83,66 +83,32 @@ export function topAgentsTimelineQuery(startDate: string, endDate: string): stri
     ORDER BY b.agent_name, month
   `;
 }
-export function bannerAgentGainQuery(selectedVersion: string): string {
-  const safe = selectedVersion.replace(/'/g, "''");
-  return `
-    WITH patch AS (
-      SELECT
-        version,
-        CAST(banner_start AS DATE) AS banner_start,
-        CAST(banner_end AS DATE) AS banner_end
-      FROM dim_patch
-      WHERE version = '${safe}'
-    ),
-    start_date AS (
-      SELECT
-        CAST(MIN(fad.snapshot_date) AS DATE) AS start_snap
-      FROM fact_agent_daily fad
-      CROSS JOIN patch p
-      WHERE fad.snapshot_date >= p.banner_start - INTERVAL '7 day'
-    ),
-    end_date AS (
-      SELECT
-        CAST(MAX(fad.snapshot_date) AS DATE) AS end_snap
-      FROM fact_agent_daily fad
-      CROSS JOIN patch p
-      WHERE fad.snapshot_date <= LEAST(CURRENT_DATE, p.banner_end)
-    ),
-    start_snap AS (
-      SELECT
-        fad.agent_name,
-        fad.attributed_views AS start_views
-      FROM fact_agent_daily fad
-      CROSS JOIN start_date sd
-      WHERE CAST(fad.snapshot_date AS DATE) = sd.start_snap
-    ),
-    end_snap AS (
-      SELECT
-        fad.agent_name,
-        fad.attributed_views AS end_views
-      FROM fact_agent_daily fad
-      CROSS JOIN end_date ed
-      WHERE CAST(fad.snapshot_date AS DATE) = ed.end_snap
-    ),
-    ranked AS (
-      SELECT
-        ss.agent_name,
-        COALESCE(es.end_views, 0) - COALESCE(ss.start_views, 0) AS view_gain,
-        ROW_NUMBER() OVER (
-          ORDER BY COALESCE(es.end_views, 0) - COALESCE(ss.start_views, 0) DESC
-        ) AS rn
-      FROM start_snap ss
-      LEFT JOIN end_snap es
-        ON ss.agent_name = es.agent_name
-    )
-    SELECT
-      agent_name,
-      view_gain
-    FROM ranked
-    WHERE rn <= 5
-    ORDER BY view_gain DESC
-  `;
-}
+export const bannerAgentGainQuery = (bannerStart: string, bannerEnd: string) => `
+WITH lo AS (
+    SELECT DISTINCT ON (agent_name)
+        agent_name,
+        attributed_views AS lo_views
+    FROM fact_agent_daily
+    WHERE snapshot_date >= DATE '${bannerStart}' - INTERVAL '7 days'
+    ORDER BY agent_name, snapshot_date ASC
+),
+hi AS (
+    SELECT DISTINCT ON (agent_name)
+        agent_name,
+        attributed_views AS hi_views
+    FROM fact_agent_daily
+    WHERE snapshot_date <= DATE '${bannerEnd}'
+    ORDER BY agent_name, snapshot_date DESC
+)
+SELECT
+    hi.agent_name,
+    hi.hi_views - COALESCE(lo.lo_views, 0) AS view_gain
+FROM hi
+LEFT JOIN lo USING (agent_name)
+WHERE hi.hi_views - COALESCE(lo.lo_views, 0) > 0
+ORDER BY view_gain DESC
+LIMIT 5
+`;
 export function risingCreatorsQuery(_timeRange: 'week' | 'month' | 'year'): string {
   return `
     WITH channel_growth AS (

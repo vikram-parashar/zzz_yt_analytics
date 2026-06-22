@@ -7,8 +7,8 @@ import {
 import { LINE_COLORS, toMMYY, fromMonthYear, toMonthYear } from '@/lib/utils';
 export function AgentTimelineChart() {
   const now = new Date();
-  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
-  const [startMonth, setStartMonth] = useState(toMonthYear(sixMonthsAgo));
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const [startMonth, setStartMonth] = useState(toMonthYear(threeMonthsAgo));
   const [endMonth, setEndMonth] = useState(toMonthYear(now));
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [agentNames, setAgentNames] = useState<string[]>([]);

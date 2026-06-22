@@ -42,7 +42,7 @@ export default async function Home() {
         </Suspense>
       </main>
       <footer className="footer footer-center p-4 bg-base-100 text-base-content/60 mt-8">
-        <p className="text-sm">ZZZ YouTube Analytics — Data powered by PostgreSQL</p>
+        <p className="text-sm">ZZZ YouTube Analytics — Data powered by DuckDB</p>
       </footer>
     </div>
   );

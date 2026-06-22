@@ -83,8 +83,9 @@ export async function fetchTopAgentsTimeline(startDate: string, endDate: string)
   const { rows, durationSec } = await query<TimelineRow>(topAgentsTimelineQuery(startDate, endDate));
   return { data: rows, durationSec };
 }
-export async function fetchBannerGain(selectedVersion: string): Promise<FetchResult<BannerGainRow[]>> {
-  const { rows, durationSec } = await query<BannerGainRow>(bannerAgentGainQuery(selectedVersion));
+export async function fetchBannerGain( bannerStart: string, bannerEnd: string): Promise<FetchResult<BannerGainRow[]>> {
+  console.log(bannerStart,bannerEnd,'dfak')
+  const { rows, durationSec } = await query<BannerGainRow>(bannerAgentGainQuery(bannerStart, bannerEnd));
   return { data: rows, durationSec };
 }
 export async function fetchRisingCreators(timeRange: 'week' | 'month' | 'year'): Promise<FetchResult<RisingCreator[]>> {
@@ -103,7 +104,7 @@ export async function fetchAgentEngagement(agentName: string): Promise<FetchResu
   const { rows, durationSec } = await query<EngagementRow>(agentEngagementTrendQuery(agentName));
   return { data: rows, durationSec };
 }
-export async function fetchAgentMostLiked(agentName: string ): Promise<FetchResult<MostLikedVideo[]>> {
+export async function fetchAgentMostLiked(agentName: string): Promise<FetchResult<MostLikedVideo[]>> {
   const { rows, durationSec } = await query<MostLikedVideo>(agentMostLikedVideoQuery(agentName));
   return { data: rows, durationSec };
 }
