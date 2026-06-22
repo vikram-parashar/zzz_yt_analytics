@@ -70,7 +70,7 @@ export function VideoTimelineChart({ agentName, attribute, initialData, banners,
                   fill="#f9e2af" fillOpacity={0.15} stroke="#f9e2af" strokeOpacity={0.4} />
               ))}
               <Line type="monotone" dataKey="video_count"
-                stroke={ATTR_COLORS[attribute] || '#7f849c'} dot={false} strokeWidth={2} />
+                stroke={ATTR_COLORS[attribute][0] || '#7f849c'} dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
         </div>
