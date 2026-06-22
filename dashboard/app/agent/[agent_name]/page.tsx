@@ -12,12 +12,13 @@ import {
   fetchAgentCoOccurring,
 } from '@/lib/fetch';
 import { ChartLoading } from '@/components/chart-loading';
-import { EngagementChart } from '@/components/agent-detail/engagement-chart';
+import { EngagementViewChart } from '@/components/agent-detail/engagement-view-chart';
 import { VideoTimelineChart } from '@/components/agent-detail/video-timeline-chart';
 import { MostLikedTable } from '@/components/agent-detail/most-liked-table';
 import { TopChannelsTable } from '@/components/agent-detail/top-channels-table';
 import { CoOccurringAgents } from '@/components/agent-detail/co-occurring-agents';
 import { ATTR_COLORS, fmt } from '@/lib/utils';
+import { EngagementLikeChart } from '@/components/agent-detail/engagement-like-chart';
 export const dynamic = 'force-dynamic';
 export const revalidate = 3600;
 interface PageProps {
@@ -117,9 +118,14 @@ export default async function AgentDetailPage({ params }: PageProps) {
             </div>
           </div>
         </div>
-        <Suspense fallback={<ChartLoading />}>
-          <EngagementChart data={engagement} queryTime={engagementRes.durationSec} />
-        </Suspense>
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
+          <Suspense fallback={<ChartLoading />}>
+            <EngagementViewChart data={engagement} queryTime={engagementRes.durationSec} />
+          </Suspense>
+          <Suspense fallback={<ChartLoading />}>
+            <EngagementLikeChart data={engagement} queryTime={engagementRes.durationSec} />
+          </Suspense>
+        </div>
         <Suspense fallback={<ChartLoading />}>
           <VideoTimelineChart
             agentName={decodedName}

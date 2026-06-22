@@ -8,7 +8,7 @@ interface EngagementChartProps {
   data: { date: string; views: number; likes: number }[];
   queryTime?: number;
 }
-export function EngagementChart({ data, queryTime }: EngagementChartProps) {
+export function EngagementLikeChart({ data, queryTime }: EngagementChartProps) {
   const engagementData = data.map(d => ({
     date: toDateStr(d.date).slice(5),
     views: Number(d.views ?? 0),
@@ -17,7 +17,7 @@ export function EngagementChart({ data, queryTime }: EngagementChartProps) {
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body p-4">
-        <h2 className="card-title text-sm">Recent Engagement (Past Month)</h2>
+        <h2 className="card-title text-sm">Recent Like Engagement (Past Month)</h2>
         {queryTime !== undefined && (
           <p className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</p>
         )}
@@ -29,7 +29,6 @@ export function EngagementChart({ data, queryTime }: EngagementChartProps) {
                 <XAxis dataKey="date" tick={{ fontSize: 9 }} stroke="#7f849c" />
                 <YAxis tick={{ fontSize: 10 }} stroke="#7f849c" tickFormatter={v => fmt(v)} />
                 <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Line type="monotone" dataKey="views" stroke="#cba6f7" dot={false} strokeWidth={2} />
                 <Line type="monotone" dataKey="likes" stroke="#a6e3a1" dot={false} strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
