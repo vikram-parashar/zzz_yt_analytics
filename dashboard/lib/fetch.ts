@@ -84,7 +84,6 @@ export async function fetchTopAgentsTimeline(startDate: string, endDate: string)
   return { data: rows, durationSec };
 }
 export async function fetchBannerGain( bannerStart: string, bannerEnd: string): Promise<FetchResult<BannerGainRow[]>> {
-  console.log(bannerStart,bannerEnd,'dfak')
   const { rows, durationSec } = await query<BannerGainRow>(bannerAgentGainQuery(bannerStart, bannerEnd));
   return { data: rows, durationSec };
 }

@@ -22,11 +22,27 @@ export function AgentTimelineChart() {
         const rows = res.data ?? res;
         const time = res.queryTime ?? null;
         const names = [...new Set(rows.map((d: any) => d.agent_name))];
+        const monthKeys: string[] = [];
+        const cursor = new Date(sd.slice(0, 4) + '-' + sd.slice(5, 7) + '-01T00:00:00');
+        const endCursor = new Date(ed.slice(0, 4) + '-' + ed.slice(5, 7) + '-01T00:00:00');
+        while (cursor <= endCursor) {
+          const y = cursor.getFullYear();
+          const m = String(cursor.getMonth() + 1).padStart(2, '0');
+          monthKeys.push(`${y}-${m}`);
+          cursor.setMonth(cursor.getMonth() + 1);
+        }
         const byMonth: Record<string, any> = {};
+        for (const m of monthKeys) {
+          byMonth[m] = { month: m, label: toMMYY(m) };
+          for (const name of names) {
+            byMonth[m][name] = 0;
+          }
+        }
         for (const d of rows) {
           const m = String(d.month).slice(0, 7);
-          if (!byMonth[m]) byMonth[m] = { month: m, label: toMMYY(m) };
-          byMonth[m][d.agent_name] = Number(d.video_count ?? 0);
+          if (byMonth[m]) {
+            byMonth[m][d.agent_name] = Number(d.video_count ?? 0);
+          }
         }
         setTimelineData(Object.values(byMonth).sort((a: any, b: any) => a.month.localeCompare(b.month)));
         setAgentNames(names);

@@ -46,11 +46,9 @@ export function BannerGainSection({
   const bannerInitialized = useRef(false);
   const bannerPatches = useMemo(() => {
     if (!factMinDate) return [];
-    const today = new Date().toISOString().slice(0, 10);
     const unique = new Map<string, BannerPatch>();
     for (const p of patches) {
-      if (p.banner_start < factMinDate) continue;
-      if (p.banner_start < today) continue;
+      if (p.banner_end < factMinDate) continue;
       const key = `${p.banner_start}_${p.banner_end}`;
       if (unique.has(key)) continue;
       const start = new Date(p.banner_start);

@@ -22,9 +22,22 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
     if (filterAttr !== 'all') list = list.filter(a => a.attribute === filterAttr);
     if (filterFaction !== 'all') list = list.filter(a => a.faction === filterFaction);
     if (search) list = list.filter(a => a.name.toLowerCase().includes(search.toLowerCase()));
+    const NUMERIC_FIELDS: SortField[] = ['total_views', 'video_count', 'total_likes', 'total_comments'];
     list.sort((a, b) => {
-      let va: any = a[sortField] ?? 0, vb: any = b[sortField] ?? 0;
-      if (typeof va === 'string' && typeof vb === 'string') { va = va.toLowerCase(); vb = vb.toLowerCase(); }
+      let va: any = a[sortField];
+      let vb: any = b[sortField];
+      if (NUMERIC_FIELDS.includes(sortField)) {
+        va = Number(va);
+        vb = Number(vb);
+        if (Number.isNaN(va)) va = 0;
+        if (Number.isNaN(vb)) vb = 0;
+      } else if (typeof va === 'string' && typeof vb === 'string') {
+        va = va.toLowerCase();
+        vb = vb.toLowerCase();
+      } else {
+        va = va ?? 0;
+        vb = vb ?? 0;
+      }
       if (va < vb) return sortDir === 'asc' ? -1 : 1;
       if (va > vb) return sortDir === 'asc' ? 1 : -1;
       return 0;
