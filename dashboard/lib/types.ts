@@ -13,10 +13,8 @@ export interface RisingCreator {
   channel_id: string;
   channel_name: string;
   thumbnail: string | null;
-  videos_collected: number | null;
-  sub_growth: number | null;
-  view_growth: number | null;
-  score: number | null;
+  videos_collected: number;
+  views_per_new_sub: number | null;
 }
 export interface AgentBannerPeriod {
   version: string; banner_start: string; banner_end: string;

@@ -99,8 +99,7 @@ export function BannerGainSection({
   }, [selectedPatch]);
   const selectedBannerData = useMemo(() => {
     const seen = new Set<string>();
-    return bannerGainData
-      .sort(
+    return bannerGainData?.sort(
         (a, b) =>
           (b.view_gain ?? 0) - (a.view_gain ?? 0)
       )

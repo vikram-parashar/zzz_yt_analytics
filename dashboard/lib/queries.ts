@@ -112,76 +112,62 @@ LIMIT 5
 export function risingCreatorsQuery(
   timeRange: 'week' | 'month' | 'year'
 ): string {
-  const interval =
-    timeRange === 'week'
-      ? '7 days'
-      : timeRange === 'month'
-        ? '1 month'
-        : '1 year';
+  const interval = timeRange === 'week' ? '7 days' : timeRange === 'month' ? '1 month' : '1 year';
   return `
-    WITH channel_growth AS (
-      SELECT
-        channel_id,
-        ( SELECT subscriber_count
-          FROM fact_channel_daily f2
-          WHERE f2.channel_id = f.channel_id
-            AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
-          ORDER BY f2.snapshot_date ASC LIMIT 1
-        ) AS start_subs,
-        ( SELECT subscriber_count
-          FROM fact_channel_daily f2
-          WHERE f2.channel_id = f.channel_id
-            AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
-          ORDER BY f2.snapshot_date DESC
-          LIMIT 1
-        ) AS end_subs,
-        ( SELECT view_count
-          FROM fact_channel_daily f2
-          WHERE f2.channel_id = f.channel_id
-            AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
-          ORDER BY f2.snapshot_date ASC
-          LIMIT 1
-        ) AS start_views,
-        ( SELECT view_count
-          FROM fact_channel_daily f2
-          WHERE f2.channel_id = f.channel_id
-            AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
-          ORDER BY f2.snapshot_date DESC
-          LIMIT 1
-        ) AS end_views
-      FROM fact_channel_daily f
-      WHERE f.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
-      GROUP BY channel_id
+      WITH daily_ranked AS (
+        SELECT
+            channel_id,
+            subscriber_count,
+            view_count,
+            ROW_NUMBER() OVER (
+                PARTITION BY channel_id
+                ORDER BY snapshot_date ASC
+            ) AS rn_first,
+            ROW_NUMBER() OVER (
+                PARTITION BY channel_id
+                ORDER BY snapshot_date DESC
+            ) AS rn_last
+        FROM fact_channel_daily
+        WHERE snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
     ),
-    video_counts AS ( SELECT channel_id, COUNT(*) AS video_cnt FROM dim_video GROUP BY channel_id),
-    adjusted_growth AS (
-      SELECT
-        *,
-        (
-          ( start_subs / NULLIF(start_subs + 100.0, 0)) * ( 100.0 * (end_subs - start_subs) / NULLIF(start_subs, 0))
-        ) AS adjusted_sub_growth,
-        (
-          ( start_views / NULLIF(start_views + 1000.0, 0)) * ( 100.0 * (end_views - start_views) / NULLIF(start_views, 0))
-        ) AS adjusted_view_growth
-      FROM channel_growth
+    channel_growth AS (
+        SELECT
+            channel_id,
+            MAX(subscriber_count) FILTER (WHERE rn_first = 1) AS start_subs,
+            MAX(subscriber_count) FILTER (WHERE rn_last = 1)  AS end_subs,
+            MAX(view_count) FILTER (WHERE rn_first = 1) AS start_views,
+            MAX(view_count) FILTER (WHERE rn_last = 1)  AS end_views
+        FROM daily_ranked
+        GROUP BY channel_id
+    ),
+    video_counts AS (
+        SELECT
+            channel_id,
+            COUNT(*) AS video_cnt
+        FROM dim_video
+        GROUP BY channel_id
     )
     SELECT
-      ag.channel_id,
-      c.channel_name,
-      c.thumbnail,
-      vc.video_cnt AS videos_collected,
-      ROUND( COALESCE(ag.adjusted_sub_growth, 0), 2) AS sub_growth,
-      ROUND( COALESCE(ag.adjusted_view_growth, 0), 2) AS view_growth,
-      ROUND(
-        vc.video_cnt * ( 0.6 * COALESCE(ag.adjusted_sub_growth, 0) + 0.4 * COALESCE(ag.adjusted_view_growth, 0)),
-        2
-      ) AS score
-    FROM adjusted_growth ag
-    JOIN dim_channel c
-      USING (channel_id)
-    JOIN video_counts vc
-      USING (channel_id)
-    ORDER BY score DESC
+        c.channel_id,
+        c.channel_name,
+        c.thumbnail,
+        vc.video_cnt AS videos_collected,
+        CASE
+            WHEN ch.end_views IS NULL
+              OR ch.start_views IS NULL
+              OR ch.end_subs IS NULL
+              OR ch.start_subs IS NULL
+              OR ch.end_subs <= ch.start_subs
+            THEN NULL
+            ELSE
+                ROUND((ch.end_views - ch.start_views)
+                / NULLIF(ch.end_subs - ch.start_subs, 0),0)
+        END AS views_per_new_sub
+    FROM dim_channel c
+    JOIN channel_growth ch USING (channel_id)
+    JOIN video_counts vc USING (channel_id)
+    ORDER BY views_per_new_sub DESC NULLS LAST
+    LIMIT 50;
   `;
 }
 export function agentVideoTimelineQuery(agentName: string, startDate: string, endDate: string): string {
