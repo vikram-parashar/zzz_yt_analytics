@@ -109,56 +109,78 @@ WHERE hi.hi_views - COALESCE(lo.lo_views, 0) > 0
 ORDER BY view_gain DESC
 LIMIT 5
 `;
-export function risingCreatorsQuery(_timeRange: 'week' | 'month' | 'year'): string {
+export function risingCreatorsQuery(
+  timeRange: 'week' | 'month' | 'year'
+): string {
+  const interval =
+    timeRange === 'week'
+      ? '7 days'
+      : timeRange === 'month'
+        ? '1 month'
+        : '1 year';
   return `
     WITH channel_growth AS (
       SELECT
         channel_id,
-        (SELECT subscriber_count FROM fact_channel_daily f2
-         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
-         ORDER BY f2.snapshot_date ASC LIMIT 1) AS start_subs,
-        (SELECT subscriber_count FROM fact_channel_daily f2
-         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
-         ORDER BY f2.snapshot_date DESC LIMIT 1) AS end_subs,
-        (SELECT view_count FROM fact_channel_daily f2
-         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
-         ORDER BY f2.snapshot_date ASC LIMIT 1) AS start_views,
-        (SELECT view_count FROM fact_channel_daily f2
-         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
-         ORDER BY f2.snapshot_date DESC LIMIT 1) AS end_views,
-        (SELECT video_count FROM fact_channel_daily f2
-         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
-         ORDER BY f2.snapshot_date ASC LIMIT 1) AS start_videos,
-        (SELECT video_count FROM fact_channel_daily f2
-         WHERE f2.channel_id = f.channel_id AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
-         ORDER BY f2.snapshot_date DESC LIMIT 1) AS end_videos
+        ( SELECT subscriber_count
+          FROM fact_channel_daily f2
+          WHERE f2.channel_id = f.channel_id
+            AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
+          ORDER BY f2.snapshot_date ASC LIMIT 1
+        ) AS start_subs,
+        ( SELECT subscriber_count
+          FROM fact_channel_daily f2
+          WHERE f2.channel_id = f.channel_id
+            AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
+          ORDER BY f2.snapshot_date DESC
+          LIMIT 1
+        ) AS end_subs,
+        ( SELECT view_count
+          FROM fact_channel_daily f2
+          WHERE f2.channel_id = f.channel_id
+            AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
+          ORDER BY f2.snapshot_date ASC
+          LIMIT 1
+        ) AS start_views,
+        ( SELECT view_count
+          FROM fact_channel_daily f2
+          WHERE f2.channel_id = f.channel_id
+            AND f2.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
+          ORDER BY f2.snapshot_date DESC
+          LIMIT 1
+        ) AS end_views
       FROM fact_channel_daily f
-      WHERE f.snapshot_date >= CURRENT_DATE - INTERVAL '1 year'
+      WHERE f.snapshot_date >= CURRENT_DATE - INTERVAL '${interval}'
       GROUP BY channel_id
     ),
-    video_counts AS (
+    video_counts AS ( SELECT channel_id, COUNT(*) AS video_cnt FROM dim_video GROUP BY channel_id),
+    adjusted_growth AS (
       SELECT
-        channel_id,
-        COUNT(*) AS video_cnt
-      FROM dim_video
-      GROUP BY channel_id
+        *,
+        (
+          ( start_subs / NULLIF(start_subs + 100.0, 0)) * ( 100.0 * (end_subs - start_subs) / NULLIF(start_subs, 0))
+        ) AS adjusted_sub_growth,
+        (
+          ( start_views / NULLIF(start_views + 1000.0, 0)) * ( 100.0 * (end_views - start_views) / NULLIF(start_views, 0))
+        ) AS adjusted_view_growth
+      FROM channel_growth
     )
     SELECT
-      cg.channel_id,
+      ag.channel_id,
       c.channel_name,
       c.thumbnail,
       vc.video_cnt AS videos_collected,
-      ROUND(100.0 * (end_subs - start_subs) / NULLIF(start_subs, 0), 2) AS sub_growth,
-      ROUND(100.0 * (end_views - start_views) / NULLIF(start_views, 0), 2) AS view_growth,
-      ROUND(100.0 * (end_videos - start_videos) / NULLIF(start_videos, 0), 2) AS video_cnt_growth,
-      vc.video_cnt * (
-        0.5 * (100.0 * (end_subs - start_subs) / NULLIF(start_subs, 0))
-        + 0.3 * (100.0 * (end_views - start_views) / NULLIF(start_views, 0))
-        + 0.2 * (100.0 * (end_videos - start_videos) / NULLIF(start_videos, 0))
+      ROUND( COALESCE(ag.adjusted_sub_growth, 0), 2) AS sub_growth,
+      ROUND( COALESCE(ag.adjusted_view_growth, 0), 2) AS view_growth,
+      ROUND(
+        vc.video_cnt * ( 0.6 * COALESCE(ag.adjusted_sub_growth, 0) + 0.4 * COALESCE(ag.adjusted_view_growth, 0)),
+        2
       ) AS score
-    FROM channel_growth cg
-    JOIN dim_channel c USING (channel_id)
-    JOIN video_counts vc USING (channel_id)
+    FROM adjusted_growth ag
+    JOIN dim_channel c
+      USING (channel_id)
+    JOIN video_counts vc
+      USING (channel_id)
     ORDER BY score DESC
   `;
 }

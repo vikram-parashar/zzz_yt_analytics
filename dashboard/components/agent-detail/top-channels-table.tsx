@@ -8,18 +8,13 @@ interface TopChannelsTableProps {
   queryTime?: number;
 }
 const DEFAULT_VISIBLE = 5;
-const STEP = 5;
 const MAX_VISIBLE = 40;
 export function TopChannelsTable({ channels, queryTime }: TopChannelsTableProps) {
   const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE);
   const cap = Math.min(MAX_VISIBLE, channels.length);
   const canShowMore = visibleCount < cap;
-  const canShowLess = visibleCount > DEFAULT_VISIBLE;
   const showMore = () => {
-    setVisibleCount(prev => Math.min(prev + STEP, cap));
-  };
-  const showLess = () => {
-    setVisibleCount(prev => Math.max(prev - STEP, DEFAULT_VISIBLE));
+    setVisibleCount(prev => Math.min(prev + 5, cap));
   };
   return (
     <div className="card bg-base-100 shadow-xl">
@@ -60,26 +55,13 @@ export function TopChannelsTable({ channels, queryTime }: TopChannelsTableProps)
               </tbody>
             </table>
             <div className="flex items-center justify-center gap-2 mt-3">
-              {canShowLess && (
-                <button
-                  className="btn btn-xs btn-ghost"
-                  onClick={showLess}
-                  type="button"
-                >
-                  −{STEP}
-                </button>
-              )}
               {canShowMore && (
-                <button
-                  className="btn btn-xs btn-primary btn-outline"
-                  onClick={showMore}
-                  type="button"
-                >
-                  +{STEP}
-                </button>
-              )}
-              {!canShowMore && visibleCount >= MAX_VISIBLE && channels.length > MAX_VISIBLE && (
-                <span className="text-xs text-base-content/40">Max {MAX_VISIBLE} reached</span>
+                <div className="text-center">
+                  <button className="btn btn-sm btn-ghost btn-outline"
+                    onClick={showMore}>
+                    +5 More
+                  </button>
+                </div>
               )}
             </div>
           </div>

@@ -91,7 +91,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
                 <h1 className="text-3xl font-bold">{agent.name}</h1>
                 <div className="flex flex-wrap gap-2 mt-2">
                   <span className={`badge ${agent.rank === 'S' ? 'badge-warning' : 'badge-ghost'}`}>Rank {agent.rank}</span>
-                  <span className="badge" style={{ backgroundColor: ATTR_COLORS[agent.attribute] || '#6c7086', color: '#1e1e2e' }}>{agent.attribute}</span>
+                  <span className="badge" style={{ backgroundColor: ATTR_COLORS[agent.attribute][0] || '#6c7086', color: '#1e1e2e' }}>{agent.attribute}</span>
                   <span className="badge badge-outline">{agent.speciality}</span>
                   <span className="badge badge-ghost">{agent.faction}</span>
                 </div>

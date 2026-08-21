@@ -3,10 +3,13 @@ export const ATTR_COLORS: Record<string, string[]> = {
   Ice: ['#04BFFA', '#04BFFA'],
   Frost: ['#04BFFA', '#04BFFA'],
   Electric: ['#2DCBFC', '#0378FD'],
+  Wind: ['#6d5cf7', '#92d2f7'],
+  Armorer: ['#f6c944', '#c68b0f'],
   Physical: ['#FE9800', '#DF9730'],
   Honed_Edge: ['#FE9800', '#DF9730'],
   Ether: ['#4B6DEA', '#FF192C'],
-  Auric_Ink: ['#4B6DEA', '#FF192C']
+  Auric_Ink: ['#4B6DEA', '#FF192C'],
+  Lumiflux:['#f7c3f4','#f79cce']
 };
 export const LINE_COLORS = ['#cba6f7', '#fab387', '#a6e3a1', '#f5c2e7', '#89dceb', '#f9e2af', '#f38ba8', '#74c7ec', '#94e2d5', '#b4befe'];
 export function toDateStr(v: any): string {

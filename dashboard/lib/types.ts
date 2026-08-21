@@ -16,7 +16,6 @@ export interface RisingCreator {
   videos_collected: number | null;
   sub_growth: number | null;
   view_growth: number | null;
-  video_cnt_growth: number | null;
   score: number | null;
 }
 export interface AgentBannerPeriod {

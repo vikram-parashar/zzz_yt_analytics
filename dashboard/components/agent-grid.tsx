@@ -19,7 +19,10 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
   const filtered = useMemo(() => {
     let list = [...agents];
     if (filterRank !== 'all') list = list.filter(a => a.rank === filterRank);
-    if (filterAttr !== 'all') list = list.filter(a => a.attribute === filterAttr);
+    const attributes = ["Electric", "Ice", "Fire", "Physical", "Ether", "Wind","Armorer"]
+    if (filterAttr === 'Special') {
+      list = list.filter(a => !attributes.includes(a.attribute));
+    } else if (filterAttr !== 'all') list = list.filter(a => a.attribute === filterAttr);
     if (filterFaction !== 'all') list = list.filter(a => a.faction === filterFaction);
     if (search) list = list.filter(a => a.name.toLowerCase().includes(search.toLowerCase()));
     const NUMERIC_FIELDS: SortField[] = ['total_views', 'video_count', 'total_likes', 'total_comments'];
@@ -68,7 +71,9 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
           <option value="Fire">Fire</option>
           <option value="Physical">Physical</option>
           <option value="Ether">Ether</option>
-          <option value="Honed_Edge">Honed Edge</option>
+          <option value="Wind">Wind</option>
+          <option value="Armorer">Armorer</option>
+          <option value="Special">Special/Unknow</option>
         </select>
         <select className="select select-sm select-bordered" value={filterFaction} onChange={e => setFilterFaction(e.target.value)}>
           <option value="all">All Factions</option>
