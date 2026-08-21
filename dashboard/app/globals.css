@@ -1,51 +1,53 @@
 @import "tailwindcss";
 @plugin "daisyui" {
-  themes: dark --default, catppuccin;
+  themes: gruvbox-light --default, dark;
 }
 
-/* Catppuccin Mocha overrides */
-[data-theme="catppuccin"] {
-  --c-rosewater: #f5e0dc;
-  --c-flamingo: #f2cdcd;
-  --c-pink: #f5c2e7;
-  --c-mauve: #cba6f7;
-  --c-red: #f38ba8;
-  --c-maroon: #eba0ac;
-  --c-peach: #fab387;
-  --c-yellow: #f9e2af;
-  --c-green: #a6e3a1;
-  --c-teal: #94e2d5;
-  --c-sky: #89dceb;
-  --c-sapphire: #74c7ec;
-  --c-blue: #89b4fa;
-  --c-lavender: #b4befe;
-  --c-text: #cdd6f4;
-  --c-subtext1: #bac2de;
-  --c-subtext0: #a6adc8;
-  --c-overlay2: #9399b2;
-  --c-overlay1: #7f849c;
-  --c-overlay0: #6c7086;
-  --c-surface2: #585b70;
-  --c-surface1: #45475a;
-  --c-surface0: #313244;
-  --c-base: #1e1e2e;
-  --c-mantle: #181825;
-  --c-crust: #11111b;
+/* Gruvbox Light theme */
+[data-theme="gruvbox-light"] {
+  /* Gruvbox Light palette */
+  --c-bg-hard: #f9f5d7;
+  --c-bg: #fbf1c7;
+  --c-bg1: #ebdbb2;
+  --c-bg2: #d5c4a1;
+  --c-bg3: #bdae93;
+  --c-bg4: #a89984;
 
-  --color-base-100: var(--c-base);
-  --color-base-200: var(--c-mantle);
-  --color-base-300: var(--c-crust);
-  --color-base-content: var(--c-text);
-  --color-primary: var(--c-mauve);
-  --color-primary-content: var(--c-crust);
-  --color-secondary: var(--c-surface1);
-  --color-secondary-content: var(--c-text);
-  --color-accent: var(--c-sapphire);
-  --color-accent-content: var(--c-crust);
-  --color-neutral: var(--c-surface0);
-  --color-neutral-content: var(--c-text);
-  --color-success: var(--c-green);
-  --color-warning: var(--c-yellow);
-  --color-error: var(--c-red);
-  --color-info: var(--c-blue);
+  --c-fg: #282828;
+  --c-fg1: #3c3836;
+  --c-fg2: #504945;
+  --c-fg3: #665c54;
+  --c-fg4: #7c6f64;
+
+  --c-red: #9d0006;
+  --c-red-bright: #cc241d;
+  --c-green: #79740e;
+  --c-green-bright: #98971a;
+  --c-yellow: #b57614;
+  --c-yellow-bright: #d79921;
+  --c-blue: #076678;
+  --c-blue-bright: #458588;
+  --c-purple: #8f3f71;
+  --c-purple-bright: #b16286;
+  --c-aqua: #427b58;
+  --c-aqua-bright: #689d6a;
+  --c-orange: #af3a03;
+  --c-orange-bright: #d65d0e;
+
+  --color-base-100: #fbf1c7; /* Soft cream background */
+  --color-base-200: #ebdbb2; /* Lighter neutral background */
+  --color-base-300: #d5c4a1; /* Light gray/beige */
+  --color-base-content: #3c3836; /* Dark brown/gray text */
+  --color-primary: #b57614; /* Gruvbox yellow/orange */
+  --color-primary-content: #fbf1c7;
+  --color-secondary: #427b58; /* Gruvbox green */
+  --color-secondary-content: #fbf1c7;
+  --color-accent: #cc241d; /* Gruvbox red */
+  --color-accent-content: #fbf1c7;
+  --color-neutral: #504945;
+  --color-neutral-content: #fbf1c7;
+  --color-info: #076678;
+  --color-success: #79740e;
+  --color-warning: #b57614;
+  --color-error: #9d0006;
 }

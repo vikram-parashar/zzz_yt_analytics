@@ -73,9 +73,9 @@ export function AgentTimelineChart() {
             {timelineData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={timelineData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#45475a" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#7f849c" interval={0} angle={-30} textAnchor="end" height={40} />
-                  <YAxis tick={{ fontSize: 10 }} stroke="#7f849c" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#bdae93" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#7c6f64" interval={0} angle={-30} textAnchor="end" height={40} />
+                  <YAxis tick={{ fontSize: 10 }} stroke="#7c6f64" />
                   <Tooltip />
                   <Legend />
                   {agentNames.map((name, i) => (

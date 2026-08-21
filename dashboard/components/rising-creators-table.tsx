@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { RisingCreator } from '@/lib/types';
 export function RisingCreatorsTable() {
   const [risingCreators, setRisingCreators] = useState<RisingCreator[]>([]);
-  const [creatorTimeRange, setCreatorTimeRange] = useState<'week' | 'month' | 'year'>('month');
+  const [creatorTimeRange, setCreatorTimeRange] = useState<'week' | 'month' | 'year'>('week');
   const [creatorLimit, setCreatorLimit] = useState(5);
   const [loading, setLoading] = useState(true);
   const [queryTime, setQueryTime] = useState<number | null>(null);
@@ -68,7 +68,7 @@ export function RisingCreatorsTable() {
                     <tr>
                       <th>#</th>
                       <th>Channel</th>
-                      <th>Videos</th>
+                      <th>Videos (ZZZ / ALL)</th>
                       <th>Views / New Sub</th>
                     </tr>
                   </thead>
@@ -106,7 +106,8 @@ export function RisingCreatorsTable() {
                             </div>
                           </td>
                           <td className="text-sm">
-                            {ch.videos_collected ?? '-'}
+                            {ch.videos_collected ?? '-'}/
+                            {ch.total_videos ?? '-'}
                           </td>
                           <td className="text-sm">
                             {ch.views_per_new_sub != null &&

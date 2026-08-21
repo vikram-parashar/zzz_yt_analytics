@@ -3,7 +3,6 @@ import {
   AGENT_STATS_QUERY,
   AGENT_NAMES_QUERY,
   DIM_PATCH_QUERY,
-  FACT_MIN_DATE_QUERY,
   agentLookupQuery,
   topAgentsTimelineQuery,
   bannerAgentGainQuery,
@@ -24,10 +23,10 @@ import type {
   CoOccurringAgent,
 } from './types';
 export interface DimPatch {
-  version: string;
-  banner_agent: string;
   banner_start: string;
   banner_end: string;
+  label: string;
+  agents: string[];
 }
 export interface BannerGainRow {
   agent_name: string;
@@ -74,10 +73,6 @@ export async function fetchAgentNames(): Promise<FetchResult<AgentNameRow[]>> {
 export async function fetchDimPatch(): Promise<FetchResult<DimPatch[]>> {
   const { rows, durationSec } = await query<DimPatch>(DIM_PATCH_QUERY);
   return { data: rows, durationSec };
-}
-export async function fetchFactMinDate(): Promise<FetchResult<string | null>> {
-  const { rows, durationSec } = await query<{ mn: string | null }>(FACT_MIN_DATE_QUERY);
-  return { data: rows[0]?.mn ?? null, durationSec };
 }
 export async function fetchTopAgentsTimeline(startDate: string, endDate: string): Promise<FetchResult<TimelineRow[]>> {
   const { rows, durationSec } = await query<TimelineRow>(topAgentsTimelineQuery(startDate, endDate));

@@ -14,6 +14,7 @@ export interface RisingCreator {
   channel_name: string;
   thumbnail: string | null;
   videos_collected: number;
+  total_videos: number;
   views_per_new_sub: number | null;
 }
 export interface AgentBannerPeriod {

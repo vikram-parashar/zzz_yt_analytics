@@ -25,11 +25,11 @@ export function EngagementLikeChart({ data, queryTime }: EngagementChartProps) {
           <div className="h-48 min-h-[192px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={engagementData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#45475a" />
-                <XAxis dataKey="date" tick={{ fontSize: 9 }} stroke="#7f849c" />
-                <YAxis tick={{ fontSize: 10 }} stroke="#7f849c" tickFormatter={v => fmt(v)} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#bdae93" />
+                <XAxis dataKey="date" tick={{ fontSize: 9 }} stroke="#7c6f64" />
+                <YAxis tick={{ fontSize: 10 }} stroke="#7c6f64" tickFormatter={v => fmt(v)} />
                 <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Line type="monotone" dataKey="likes" stroke="#a6e3a1" dot={false} strokeWidth={2} />
+                <Line type="monotone" dataKey="likes" stroke="#689d6a" dot={false} strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           </div>

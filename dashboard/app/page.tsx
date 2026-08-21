@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
-import { fetchAgentStats, fetchDimPatch, fetchFactMinDate } from '@/lib/fetch';
-import { AgentTimelineChart } from '@/components/agent-timeline-chart';
+import { fetchAgentStats, fetchDimPatch } from '@/lib/fetch';
 import { BannerGainSection } from '@/components/banner-gain-section';
 import { RisingCreatorsTable } from '@/components/rising-creators-table';
 import { AgentGrid } from '@/components/agent-grid';
@@ -8,14 +7,12 @@ import { ChartLoading } from '@/components/chart-loading';
 export const dynamic = 'force-dynamic';
 export const revalidate = 3600;
 export default async function Home() {
-  const [agentStatsRes, patchRes, factMinDateRes] = await Promise.all([
+  const [agentStatsRes, patchRes] = await Promise.all([
     fetchAgentStats(),
     fetchDimPatch(),
-    fetchFactMinDate(),
   ]);
   const agents = agentStatsRes.data;
   const patches = patchRes.data;
-  const factMinDate = factMinDateRes.data;
   const agentQueryTime = agentStatsRes.durationSec;
   return (
     <div className="min-h-screen bg-base-300 text-base-content flex flex-col">
@@ -29,10 +26,7 @@ export default async function Home() {
       </div>
       <main className="max-w-7xl mx-auto p-4 space-y-6 flex-1">
         <Suspense fallback={<ChartLoading />}>
-          <AgentTimelineChart />
-        </Suspense>
-        <Suspense fallback={<ChartLoading />}>
-          <BannerGainSection agents={agents} patches={patches} factMinDate={factMinDate} />
+          <BannerGainSection agents={agents} patches={patches} />
         </Suspense>
         <Suspense fallback={<ChartLoading />}>
           <RisingCreatorsTable />

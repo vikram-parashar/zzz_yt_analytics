@@ -22,13 +22,37 @@ export const AGENT_STATS_QUERY = `
       ON a.name = p.agent_name;
 `;
 export const DIM_PATCH_QUERY = `
-  SELECT DISTINCT version, agent_name AS banner_agent,
-    CAST(banner_start AS VARCHAR) AS banner_start, CAST(banner_end AS VARCHAR) AS banner_end
-  FROM dim_patch
-  ORDER BY banner_start
-`;
-export const FACT_MIN_DATE_QUERY = `
-  SELECT CAST(MIN(snapshot_date) AS VARCHAR) AS mn FROM fact_agent_daily
+WITH distinct_runs AS (
+    SELECT DISTINCT
+        banner_start,
+        banner_end,
+        agent_name
+    FROM dim_patch
+),
+agent_history AS (
+    SELECT
+        banner_start,
+        banner_end,
+        agent_name,
+        MIN(banner_start) OVER (
+            PARTITION BY agent_name
+        ) AS first_seen_date
+    FROM distinct_runs
+)
+SELECT
+    banner_start,
+    banner_end,
+    array_to_string(
+        ARRAY_AGG(
+            agent_name
+            ORDER BY first_seen_date desc, agent_name
+        ),
+        '/'
+    ) AS label
+FROM agent_history
+GROUP BY banner_start, banner_end
+having banner_start>='2026-07-01'
+ORDER BY banner_start
 `;
 export function agentLookupQuery(agentName: string): string {
   const safe = agentName.replace(/'/g, "''");
@@ -114,7 +138,7 @@ export function risingCreatorsQuery(
 ): string {
   const interval = timeRange === 'week' ? '7 days' : timeRange === 'month' ? '1 month' : '1 year';
   return `
-      WITH daily_ranked AS (
+        WITH daily_ranked AS (
         SELECT
             channel_id,
             subscriber_count,
@@ -146,12 +170,21 @@ export function risingCreatorsQuery(
             COUNT(*) AS video_cnt
         FROM dim_video
         GROUP BY channel_id
+    ),
+    total_videos AS (
+    SELECT DISTINCT ON (channel_id)
+      channel_id,
+      video_count,
+      snapshot_date
+    FROM fact_channel_daily
+    ORDER BY channel_id, snapshot_date DESC
     )
     SELECT
         c.channel_id,
         c.channel_name,
         c.thumbnail,
         vc.video_cnt AS videos_collected,
+        tv.video_count AS total_videos,
         CASE
             WHEN ch.end_views IS NULL
               OR ch.start_views IS NULL
@@ -166,8 +199,9 @@ export function risingCreatorsQuery(
     FROM dim_channel c
     JOIN channel_growth ch USING (channel_id)
     JOIN video_counts vc USING (channel_id)
+    JOIN total_videos tv USING (channel_id)
     ORDER BY views_per_new_sub DESC NULLS LAST
-    LIMIT 50;
+    LIMIT 50
   `;
 }
 export function agentVideoTimelineQuery(agentName: string, startDate: string, endDate: string): string {

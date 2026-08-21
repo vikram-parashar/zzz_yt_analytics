@@ -61,16 +61,16 @@ export function VideoTimelineChart({ agentName, attribute, initialData, banners,
         <div className="h-72 min-h-[288px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#45475a" />
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#7f849c" interval={0} angle={-30} textAnchor="end" height={40} />
-              <YAxis tick={{ fontSize: 10 }} stroke="#7f849c" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#bdae93" />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#7c6f64" interval={0} angle={-30} textAnchor="end" height={40} />
+              <YAxis tick={{ fontSize: 10 }} stroke="#7c6f64" />
               <Tooltip />
               {formattedBanners.map((b, i) => (
                 <ReferenceArea key={i} x1={b.x1} x2={b.x2}
-                  fill="#f9e2af" fillOpacity={0.15} stroke="#f9e2af" strokeOpacity={0.4} />
+                  fill="#d79921" fillOpacity={0.15} stroke="#d79921" strokeOpacity={0.4} />
               ))}
               <Line type="monotone" dataKey="video_count"
-                stroke={ATTR_COLORS[attribute][0] || '#7f849c'} dot={false} strokeWidth={2} />
+                stroke={ATTR_COLORS[attribute][0] || '#7c6f64'} dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
         </div>

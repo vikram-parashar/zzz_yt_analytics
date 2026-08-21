@@ -11,7 +11,7 @@ export const ATTR_COLORS: Record<string, string[]> = {
   Auric_Ink: ['#4B6DEA', '#FF192C'],
   Lumiflux:['#f7c3f4','#f79cce']
 };
-export const LINE_COLORS = ['#cba6f7', '#fab387', '#a6e3a1', '#f5c2e7', '#89dceb', '#f9e2af', '#f38ba8', '#74c7ec', '#94e2d5', '#b4befe'];
+export const LINE_COLORS = ['#8f3f71', '#d65d0e', '#689d6a', '#b16286', '#458588', '#d79921', '#cc241d', '#076678', '#427b58', '#af3a03'];
 export function toDateStr(v: any): string {
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   if (typeof v === 'string') return v.slice(0, 10);

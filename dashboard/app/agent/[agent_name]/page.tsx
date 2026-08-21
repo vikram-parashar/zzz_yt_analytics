@@ -53,8 +53,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-base-300">
         <div className="text-center space-y-4">
-          <p className="text-xl">Agent not found</p>
-          <Link href="/" className="btn btn-primary">← Back to Dashboard</Link>
+          <p className="text-xl">Agent data not fetched</p>
         </div>
       </div>
     );
@@ -90,10 +89,10 @@ export default async function AgentDetailPage({ params }: PageProps) {
               <div className="flex-1">
                 <h1 className="text-3xl font-bold">{agent.name}</h1>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  <span className={`badge ${agent.rank === 'S' ? 'badge-warning' : 'badge-ghost'}`}>Rank {agent.rank}</span>
-                  <span className="badge" style={{ backgroundColor: ATTR_COLORS[agent.attribute][0] || '#6c7086', color: '#1e1e2e' }}>{agent.attribute}</span>
-                  <span className="badge badge-outline">{agent.speciality}</span>
-                  <span className="badge badge-ghost">{agent.faction}</span>
+                  <span className={`p-2 badge ${agent.rank === 'S' ? 'badge-warning' : 'badge-ghost'}`}>Rank {agent.rank}</span>
+                  <span className="p-2 badge" style={{ backgroundColor: ATTR_COLORS[agent.attribute][0] || '#6c7086', color: '#1e1e2e' }}>{agent.attribute}</span>
+                  <span className="p-2 badge badge-outline">{agent.speciality}</span>
+                  <span className="p-2 badge badge-ghost">{agent.faction}</span>
                 </div>
               </div>
               {agent.on_banner && <div className="badge badge-primary badge-lg">On Banner Now</div>}

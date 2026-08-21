@@ -55,10 +55,10 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
           <span className="text-xs text-base-content/50">Query took {queryTime.toFixed(3)}s</span>
         )}
       </div>
+      <div className='my-2 w-1/3'>
+        <input type="text" placeholder="Search agent..." className="input input-sm input-bordered w-full" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
       <div className="grid grid-cols-2 md:grid-cols-4 items-center gap-3 mb-4">
-        <input type="text" placeholder="Search agent..."
-          className="input input-sm input-bordered w-full"
-          value={search} onChange={e => setSearch(e.target.value)} />
         <select className="select select-sm select-bordered" value={filterRank} onChange={e => setFilterRank(e.target.value)}>
           <option value="all">All Ranks</option>
           <option value="S">S-Rank</option>
@@ -112,7 +112,7 @@ export function AgentGrid({ agents, queryTime }: AgentGridProps) {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-sm truncate">{agent.name}</h3>
                     <div className="flex gap-1 mt-1">
-                      <span className={`badge badge-xs text-accent-content ${agent.rank === 'S' ? 'bg-[#F78E02]' : agent.rank === 'A' ? 'bg-[#CF22F3]' : 'badge-ghost'}`}>{agent.rank || '?'}</span> <span className="badge badge-xs font-bold text-black" style={{
+                      <span className={`p-2 badge badge-xs text-accent-content ${agent.rank === 'S' ? 'bg-[#d79921]' : agent.rank === 'A' ? 'bg-[#b16286]' : 'badge-ghost'}`}>{agent.rank || '?'}</span> <span className="p-2 badge badge-xs font-bold text-black" style={{
                         background: `linear-gradient( 90deg, ${colors[0]} 0%, ${colors[1]} 100%)`,
                       }}>{agent.attribute || 'Unknown'}</span>
                     </div>
